@@ -1,0 +1,176 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 221.2 83.2% 53.3%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96%;
+    --secondary-foreground: 222.2 84% 4.9%;
+    --muted: 210 40% 96%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 210 40% 96%;
+    --accent-foreground: 222.2 84% 4.9%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 221.2 83.2% 53.3%;
+    --radius: 0.75rem;
+  }
+
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 217.2 91.2% 59.8%;
+    --primary-foreground: 222.2 84% 4.9%;
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 224.3 76.3% 94.1%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-gradient-to-br from-slate-50 to-blue-50 text-slate-900;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
+/* Custom scrollbar */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: hsl(var(--muted));
+  border-radius: 3px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted-foreground));
+  border-radius: 3px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--foreground));
+}
+
+/* Loading animations */
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.animate-pulse {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* File upload drag and drop */
+.drag-active {
+  @apply border-primary bg-primary/5;
+}
+
+/* Analysis status indicators */
+.status-pending {
+  @apply bg-yellow-100 text-yellow-800 border-yellow-200;
+}
+
+.status-processing {
+  @apply bg-blue-100 text-blue-800 border-blue-200;
+}
+
+.status-completed {
+  @apply bg-green-100 text-green-800 border-green-200;
+}
+
+.status-failed {
+  @apply bg-red-100 text-red-800 border-red-200;
+}
+
+/* Service type indicators */
+.service-audio {
+  @apply bg-gradient-to-r from-purple-100 to-pink-100 text-purple-800 border-purple-200;
+}
+
+.service-fathom {
+  @apply bg-gradient-to-r from-blue-100 to-indigo-100 text-blue-800 border-blue-200;
+}
+
+.service-phantom {
+  @apply bg-gradient-to-r from-indigo-100 to-blue-100 text-indigo-800 border-indigo-200;
+}
+
+.service-transcript {
+  @apply bg-gradient-to-r from-teal-100 to-cyan-100 text-teal-800 border-teal-200;
+}
+
+/* Sales Call Analyzer specific styles */
+.sales-analyzer-gradient {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.analysis-card {
+  @apply bg-white/90 backdrop-blur-sm border-slate-200 shadow-lg rounded-2xl;
+}
+
+.analysis-button {
+  @apply h-14 text-lg font-semibold rounded-xl shadow-lg hover:shadow-xl transition-all duration-200;
+}
+
+.analysis-input {
+  @apply h-12 text-lg border-slate-300 focus:border-blue-500 focus:ring-blue-500 rounded-xl;
+}
+
+.analysis-textarea {
+  @apply text-lg border-slate-300 focus:border-blue-500 focus:ring-blue-500 rounded-xl resize-none;
+}
+
+/* Enhanced animations */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp 0.6s ease-out;
+}
+
+/* Glass morphism effect */
+.glass {
+  background: rgba(255, 255, 255, 0.25);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+}

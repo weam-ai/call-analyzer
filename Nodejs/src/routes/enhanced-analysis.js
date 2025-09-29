@@ -1,0 +1,236 @@
+const express = require('express');
+const { body, validationResult } = require('express-validator');
+const enhancedFathomService = require('../services/enhancedFathomService');
+const Analysis = require('../models/Analysis');
+const User = require('../models/User');
+const logger = require('../utils/logger');
+
+const router = express.Router();
+
+// Helper function to get or create demo user
+async function getDemoUser() {
+  try {
+    let demoUser = await User.findOne({ email: 'demo@salescallanalyzer.com' });
+    
+    if (!demoUser) {
+      demoUser = new User({
+        name: 'Demo User',
+        email: 'demo@salescallanalyzer.com',
+        password: 'demo123',
+        role: 'user'
+      });
+      await demoUser.save();
+      logger.info('Created demo user for enhanced analysis');
+    }
+    
+    return demoUser;
+  } catch (error) {
+    logger.error('Error getting demo user:', error);
+    throw new Error('Failed to get demo user');
+  }
+}
+
+// Enhanced Fathom Service - Advanced transcript extraction and analysis
+router.post('/fathom', [
+  body('url').isURL().withMessage('Valid Fathom URL is required'),
+  body('options').optional().isObject().withMessage('Options must be an object')
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Validation failed',
+        errors: errors.array()
+      });
+    }
+
+    const { url, additionalUrl, additionalDocument, options = {} } = req.body;
+    const demoUser = await getDemoUser();
+    
+    let additionalContent = null;
+    if (additionalUrl) {
+      additionalContent = { type: 'url', url: additionalUrl };
+    } else if (additionalDocument) {
+      additionalContent = { type: 'document', file: additionalDocument };
+    }
+
+    logger.info('Starting enhanced Fathom analysis', { url, options });
+
+    const analysis = await enhancedFathomService.processFathomCall(
+      url,
+      demoUser._id,
+      additionalContent
+    );
+
+    res.status(201).json({
+      success: true,
+      message: 'Enhanced Fathom analysis completed',
+      data: analysis
+    });
+
+  } catch (error) {
+    logger.error('Enhanced Fathom analysis error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to process enhanced Fathom analysis'
+    });
+  }
+});
+
+// Get enhanced analysis by ID
+router.get('/:id', async (req, res) => {
+  try {
+    const demoUser = await getDemoUser();
+    const analysis = await Analysis.findOne({
+      _id: req.params.id,
+      userId: demoUser._id
+    }).populate('userId', 'name email');
+
+    if (!analysis) {
+      return res.status(404).json({
+        success: false,
+        message: 'Analysis not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      data: analysis
+    });
+  } catch (error) {
+    logger.error('Get enhanced analysis error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch enhanced analysis'
+    });
+  }
+});
+
+// Get all enhanced analyses
+router.get('/', async (req, res) => {
+  try {
+    const { page = 1, limit = 10, serviceType = 'fathom' } = req.query;
+    
+    const demoUser = await getDemoUser();
+    const query = { 
+      userId: demoUser._id,
+      serviceType: serviceType
+    };
+
+    const analyses = await Analysis.find(query)
+      .sort({ createdAt: -1 })
+      .limit(limit * 1)
+      .skip((page - 1) * limit)
+      .populate('userId', 'name email');
+
+    const total = await Analysis.countDocuments(query);
+
+    res.json({
+      success: true,
+      data: {
+        analyses,
+        pagination: {
+          current: parseInt(page),
+          pages: Math.ceil(total / limit),
+          total
+        }
+      }
+    });
+  } catch (error) {
+    logger.error('Get enhanced analyses error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch enhanced analyses'
+    });
+  }
+});
+
+// Delete enhanced analysis
+router.delete('/:id', async (req, res) => {
+  try {
+    const demoUser = await getDemoUser();
+    const analysis = await Analysis.findOneAndDelete({
+      _id: req.params.id,
+      userId: demoUser._id
+    });
+
+    if (!analysis) {
+      return res.status(404).json({
+        success: false,
+        message: 'Analysis not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Enhanced analysis deleted successfully'
+    });
+  } catch (error) {
+    logger.error('Delete enhanced analysis error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to delete enhanced analysis'
+    });
+  }
+});
+
+// Get enhanced analysis statistics
+router.get('/stats/overview', async (req, res) => {
+  try {
+    const demoUser = await getDemoUser();
+    const userId = demoUser._id;
+    
+    const stats = await Analysis.aggregate([
+      { $match: { userId: userId, serviceType: 'fathom' } },
+      {
+        $group: {
+          _id: null,
+          totalAnalyses: { $sum: 1 },
+          completedAnalyses: {
+            $sum: { $cond: [{ $eq: ['$status', 'completed'] }, 1, 0] }
+          },
+          failedAnalyses: {
+            $sum: { $cond: [{ $eq: ['$status', 'failed'] }, 1, 0] }
+          },
+          totalCost: { $sum: '$processing.llmAnalysis.cost' },
+          avgProcessingTime: { $avg: '$processing.llmAnalysis.processingTime' },
+          avgConfidence: { $avg: '$processing.transcript.confidence' }
+        }
+      }
+    ]);
+
+    const recentAnalyses = await Analysis.find({ 
+      userId: userId, 
+      serviceType: 'fathom' 
+    })
+    .sort({ createdAt: -1 })
+    .limit(5)
+    .select('_id status createdAt processing.transcript.confidence processing.llmAnalysis.cost');
+
+    res.json({
+      success: true,
+      data: {
+        overview: stats[0] || {
+          totalAnalyses: 0,
+          completedAnalyses: 0,
+          failedAnalyses: 0,
+          totalCost: 0,
+          avgProcessingTime: 0,
+          avgConfidence: 0
+        },
+        recentAnalyses
+      }
+    });
+  } catch (error) {
+    logger.error('Get enhanced stats error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch enhanced statistics'
+    });
+  }
+});
+
+module.exports = router;
+
+
