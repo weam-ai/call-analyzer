@@ -136,35 +136,56 @@ class AudioUploadService {
    * Transcribe audio file using Gemini
    */
   async transcribeAudioFile(fileUri, mimeType) {
-    try {
-      logger.info('Starting audio transcription', { fileUri, mimeType });
+    const maxRetries = 3;
+    let lastError;
 
-      const response = await this.genAI.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: createUserContent([
-          createPartFromUri(fileUri, mimeType),
-          "Transcribe this audio file. Provide a detailed transcript with speaker identification if possible. Include timestamps if available. Format the output clearly with speaker names and their corresponding dialogue."
-        ])
-      });
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        logger.info('Starting audio transcription', { fileUri, mimeType, attempt });
 
-      const transcript = response.text;
-      
-      logger.info('Audio transcription completed', {
-        transcriptLength: transcript.length,
-        wordCount: transcript.split(/\s+/).length
-      });
+        const response = await this.genAI.models.generateContent({
+          model: 'gemini-2.5-flash',
+          contents: createUserContent([
+            createPartFromUri(fileUri, mimeType),
+            "Transcribe this audio file. Provide a detailed transcript with speaker identification if possible. Include timestamps if available. Format the output clearly with speaker names and their corresponding dialogue."
+          ])
+        });
 
-      return {
-        text: transcript,
-        wordCount: transcript.split(/\s+/).length,
-        language: 'en', // You might want to detect this
-        confidence: this.calculateConfidence(transcript)
-      };
+        const transcript = response.text;
+        
+        logger.info('Audio transcription completed', {
+          transcriptLength: transcript.length,
+          wordCount: transcript.split(/\s+/).length,
+          attempt
+        });
 
-    } catch (error) {
-      logger.error('Audio transcription failed:', error);
-      throw new Error(`Transcription failed: ${error.message}`);
+        return {
+          text: transcript,
+          wordCount: transcript.split(/\s+/).length,
+          language: 'en', // You might want to detect this
+          confidence: this.calculateConfidence(transcript)
+        };
+
+      } catch (error) {
+        lastError = error;
+        logger.warn(`Audio transcription attempt ${attempt} failed:`, {
+          error: error.message,
+          attempt,
+          maxRetries
+        });
+
+        if (attempt < maxRetries) {
+          // Wait before retrying (exponential backoff)
+          const delay = Math.pow(2, attempt) * 1000; // 2s, 4s, 8s
+          logger.info(`Retrying transcription in ${delay}ms...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
+      }
     }
+
+    // If all retries failed
+    logger.error('Audio transcription failed after all retries:', lastError);
+    throw new Error(`Transcription failed after ${maxRetries} attempts: ${lastError.message}`);
   }
 
   /**
@@ -381,16 +402,34 @@ Please analyze the following audio file and provide a comprehensive sales call a
   /**
    * Process complete audio file upload and analysis
    */
-  async processAudioFile(filePath, userId, additionalContent = '') {
+  async processAudioFile(filePath, userId, additionalContent = '', existingAnalysis = null) {
     try {
-      // Create analysis record first
-      const analysis = new Analysis({
-        userId,
-        serviceType: 'audio',
-        status: 'processing',
-        input: { filePath }
-      });
-      await analysis.save();
+      let analysis;
+      
+      if (existingAnalysis) {
+        // Use existing analysis record
+        analysis = existingAnalysis;
+        analysis.status = 'processing';
+        analysis.input.filePath = filePath;
+        await analysis.save();
+      } else {
+        // Get user information for the user object
+        const User = require('../models/User');
+        const user = await User.findById(userId);
+
+        // Create new analysis record
+        analysis = new Analysis({
+          user: user ? {
+            email: user.email || null,
+            userId: user._id || null,
+            companyId: user.companyId || null
+          } : null,
+          serviceType: 'audio',
+          status: 'processing',
+          input: { filePath }
+        });
+        await analysis.save();
+      }
 
       logger.info('Starting audio file processing', { 
         analysisId: analysis._id, 
@@ -415,16 +454,51 @@ Please analyze the following audio file and provide a comprehensive sales call a
       await analysis.save();
 
       // Transcribe audio
-      const transcriptResult = await this.transcribeAudioFile(uploadedFile.uri, uploadedFile.mimeType);
-
-      // Update analysis with transcript
-      analysis.processing.transcript = {
-        text: transcriptResult.text,
-        confidence: transcriptResult.confidence,
-        language: transcriptResult.language,
-        wordCount: transcriptResult.wordCount
-      };
-      await analysis.save();
+      let transcriptResult;
+      try {
+        transcriptResult = await this.transcribeAudioFile(uploadedFile.uri, uploadedFile.mimeType);
+        
+        // Update analysis with transcript
+        analysis.processing.transcript = {
+          text: transcriptResult.text,
+          confidence: transcriptResult.confidence,
+          language: transcriptResult.language,
+          wordCount: transcriptResult.wordCount
+        };
+        await analysis.save();
+        
+        logger.info('Audio transcription completed successfully', {
+          analysisId: analysis._id,
+          wordCount: transcriptResult.wordCount
+        });
+      } catch (transcriptionError) {
+        logger.error('Audio transcription failed, continuing with fallback', {
+          analysisId: analysis._id,
+          error: transcriptionError.message
+        });
+        
+        // Create a fallback transcript with error information
+        transcriptResult = {
+          text: `[Transcription Error: ${transcriptionError.message}] The audio file was uploaded successfully but transcription failed. Please try again or contact support.`,
+          wordCount: 0,
+          language: 'en',
+          confidence: 0,
+          error: transcriptionError.message
+        };
+        
+        analysis.processing.transcript = {
+          text: transcriptResult.text,
+          confidence: transcriptResult.confidence,
+          language: transcriptResult.language,
+          wordCount: transcriptResult.wordCount,
+          error: transcriptResult.error
+        };
+        analysis.status = 'failed';
+        analysis.error = `Transcription failed: ${transcriptionError.message}`;
+        await analysis.save();
+        
+        // Don't throw here, continue with the fallback transcript
+      }
 
       // Analyze audio
       const analysisResult = await this.analyzeAudioFile(
@@ -441,7 +515,16 @@ Please analyze the following audio file and provide a comprehensive sales call a
         processingTime: analysisResult.processingTime
       };
 
-      analysis.results = analysisResult.analysis;
+      // Ensure callDescription and summary are strings, not objects
+      const processedAnalysis = { ...analysisResult.analysis };
+      if (processedAnalysis.callDescription && typeof processedAnalysis.callDescription === 'object') {
+        processedAnalysis.callDescription = this.serializeCallDescription(processedAnalysis.callDescription);
+      }
+      if (processedAnalysis.summary && typeof processedAnalysis.summary === 'object') {
+        processedAnalysis.summary = this.serializeSummary(processedAnalysis.summary);
+      }
+
+      analysis.results = processedAnalysis;
       analysis.status = 'completed';
       analysis.metadata.completedAt = new Date();
 
@@ -520,6 +603,69 @@ Please analyze the following audio file and provide a comprehensive sales call a
 
     // Fallback parsing
     return this.fallbackParse(responseText);
+  }
+
+  serializeCallDescription(callDescObj) {
+    if (typeof callDescObj === 'string') {
+      return callDescObj;
+    }
+    
+    let result = '';
+    if (callDescObj.title) {
+      result += `**${callDescObj.title}**\n\n`;
+    }
+    
+    if (callDescObj.participants && Array.isArray(callDescObj.participants)) {
+      result += '**Participants**:\n';
+      callDescObj.participants.forEach(participant => {
+        result += `• ${participant.name} (${participant.role})`;
+        if (participant.company) {
+          result += ` - ${participant.company}`;
+        }
+        result += '\n';
+      });
+      result += '\n';
+    }
+    
+    if (callDescObj.purpose) {
+      result += `**Purpose**: ${callDescObj.purpose}\n\n`;
+    }
+    
+    if (callDescObj.keyTopics && Array.isArray(callDescObj.keyTopics)) {
+      result += '**Key Topics**:\n';
+      callDescObj.keyTopics.forEach(topic => {
+        result += `• ${topic}\n`;
+      });
+      result += '\n';
+    }
+    
+    if (callDescObj.tone) {
+      result += `**Tone**: ${callDescObj.tone}\n\n`;
+    }
+    
+    return result.trim();
+  }
+
+  serializeSummary(summaryObj) {
+    if (typeof summaryObj === 'string') {
+      return summaryObj;
+    }
+    
+    let result = '**Call Summary**\n\n';
+    
+    if (summaryObj.openingDiscovery) {
+      result += `**Opening & Discovery**\n${summaryObj.openingDiscovery}\n\n`;
+    }
+    
+    if (summaryObj.solutionPresentation) {
+      result += `**Solution Presentation**\n${summaryObj.solutionPresentation}\n\n`;
+    }
+    
+    if (summaryObj.closingNextSteps) {
+      result += `**Closing & Next Steps**\n${summaryObj.closingNextSteps}`;
+    }
+    
+    return result.trim();
   }
 
   /**

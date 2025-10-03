@@ -13,9 +13,17 @@ class AudioService {
       // Validate file
       this.validateAudioFile(audioFile);
 
+      // Get user information for the user object
+      const User = require('../models/User');
+      const user = await User.findById(userId);
+
       // Create analysis record
       analysis = new Analysis({
-        userId,
+        user: user ? {
+          email: user.email || null,
+          userId: user._id || null,
+          companyId: user.companyId || null
+        } : null,
         serviceType: 'audio',
         status: 'processing',
         input: {

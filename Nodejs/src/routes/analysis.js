@@ -7,6 +7,7 @@ const transcriptService = require('../services/transcriptService');
 const Analysis = require('../models/Analysis');
 const User = require('../models/User');
 const logger = require('../utils/logger');
+const config = require('../config/backend-config');
 
 const router = express.Router();
 
@@ -225,7 +226,7 @@ router.post('/audio', upload.single('audioFile'), [
     res.status(500).json({
       success: false,
       message: error.message || 'Failed to process audio analysis',
-      error: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      error: config.isDevelopment ? error.stack : undefined
     });
   }
 });

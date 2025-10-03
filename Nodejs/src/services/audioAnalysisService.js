@@ -13,7 +13,7 @@ class AudioAnalysisService {
   /**
    * Process audio file upload and comprehensive analysis
    */
-  async processAudioAnalysis(audioFile, userId, options = {}) {
+  async processAudioAnalysis(audioFile, userId, options = {}, existingAnalysis = null) {
     try {
       const {
         additionalContent = '',
@@ -45,7 +45,8 @@ class AudioAnalysisService {
         const analysis = await this.audioUploadService.processAudioFile(
           tempFilePath,
           userId,
-          additionalContent
+          additionalContent,
+          existingAnalysis
         );
 
         // Add website context if provided

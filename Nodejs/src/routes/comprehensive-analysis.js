@@ -224,13 +224,12 @@ router.get('/', async (req, res) => {
     const { page = 1, limit = 10 } = req.query;
     
     const demoUser = await getDemoUser();
-    const query = { userId: demoUser._id };
+    const query = { 'user.userId': demoUser._id };
 
     const analyses = await Analysis.find(query)
       .sort({ createdAt: -1 })
       .limit(limit * 1)
-      .skip((page - 1) * limit)
-      .populate('userId', 'name email');
+      .skip((page - 1) * limit);
 
     const total = await Analysis.countDocuments(query);
 
@@ -260,7 +259,7 @@ router.delete('/:id', async (req, res) => {
     const demoUser = await getDemoUser();
     const analysis = await Analysis.findOneAndDelete({
       _id: req.params.id,
-      userId: demoUser._id
+      'user.userId': demoUser._id
     });
 
     if (!analysis) {

@@ -4,6 +4,7 @@ const cheerio = require('cheerio');
 const logger = require('../utils/logger');
 const Analysis = require('../models/Analysis');
 const User = require('../models/User');
+const config = require('../config/backend-config');
 
 class EnhancedFathomService {
   constructor() {
@@ -63,7 +64,7 @@ class EnhancedFathomService {
    */
   async initializeLLM() {
     try {
-      const apiKey = process.env.GEMINI_API_KEY;
+      const apiKey = config.geminiApiKey;
       if (!apiKey) {
         throw new Error('GEMINI_API_KEY not found in environment variables');
       }
@@ -1330,9 +1331,17 @@ Transcript: ${transcript}`;
    */
   async processFathomCall(url, userId, additionalContent = null) {
     try {
+      // Get user information for the user object
+      const User = require('../models/User');
+      const user = await User.findById(userId);
+
       // Create analysis record first
       this.analysis = new Analysis({
-        userId,
+        user: user ? {
+          email: user.email || null,
+          userId: user._id || null,
+          companyId: user.companyId || null
+        } : null,
         serviceType: 'fathom',
         status: 'processing',
         input: { url }
@@ -1406,7 +1415,16 @@ Transcript: ${transcript}`;
         processingTime: analysisResult.processingTime
       };
 
-      this.analysis.results = analysisResult.analysis;
+      // Ensure callDescription and summary are strings, not objects
+      const processedAnalysis = { ...analysisResult.analysis };
+      if (processedAnalysis.callDescription && typeof processedAnalysis.callDescription === 'object') {
+        processedAnalysis.callDescription = this.serializeCallDescription(processedAnalysis.callDescription);
+      }
+      if (processedAnalysis.summary && typeof processedAnalysis.summary === 'object') {
+        processedAnalysis.summary = this.serializeSummary(processedAnalysis.summary);
+      }
+
+      this.analysis.results = processedAnalysis;
       this.analysis.status = 'completed';
       this.analysis.metadata.completedAt = new Date();
       this.analysis.metadata.processingTime = analysisResult.processingTime;
@@ -1448,7 +1466,7 @@ Transcript: ${transcript}`;
   async processFathomUrlOnly(url, analysis, additionalContent = null) {
     try {
       // Initialize service without creating analysis record
-      await this.initialize(analysis._id, analysis.userId);
+      await this.initialize(analysis._id, analysis.user.userId);
 
       logger.info('Starting Fathom URL processing for comprehensive analysis', { 
         analysisId: analysis._id, 
@@ -1544,6 +1562,69 @@ Transcript: ${transcript}`;
     } catch (error) {
       logger.warn('Error during browser cleanup:', error.message);
     }
+  }
+
+  serializeCallDescription(callDescObj) {
+    if (typeof callDescObj === 'string') {
+      return callDescObj;
+    }
+    
+    let result = '';
+    if (callDescObj.title) {
+      result += `**${callDescObj.title}**\n\n`;
+    }
+    
+    if (callDescObj.participants && Array.isArray(callDescObj.participants)) {
+      result += '**Participants**:\n';
+      callDescObj.participants.forEach(participant => {
+        result += `• ${participant.name} (${participant.role})`;
+        if (participant.company) {
+          result += ` - ${participant.company}`;
+        }
+        result += '\n';
+      });
+      result += '\n';
+    }
+    
+    if (callDescObj.purpose) {
+      result += `**Purpose**: ${callDescObj.purpose}\n\n`;
+    }
+    
+    if (callDescObj.keyTopics && Array.isArray(callDescObj.keyTopics)) {
+      result += '**Key Topics**:\n';
+      callDescObj.keyTopics.forEach(topic => {
+        result += `• ${topic}\n`;
+      });
+      result += '\n';
+    }
+    
+    if (callDescObj.tone) {
+      result += `**Tone**: ${callDescObj.tone}\n\n`;
+    }
+    
+    return result.trim();
+  }
+
+  serializeSummary(summaryObj) {
+    if (typeof summaryObj === 'string') {
+      return summaryObj;
+    }
+    
+    let result = '**Call Summary**\n\n';
+    
+    if (summaryObj.openingDiscovery) {
+      result += `**Opening & Discovery**\n${summaryObj.openingDiscovery}\n\n`;
+    }
+    
+    if (summaryObj.solutionPresentation) {
+      result += `**Solution Presentation**\n${summaryObj.solutionPresentation}\n\n`;
+    }
+    
+    if (summaryObj.closingNextSteps) {
+      result += `**Closing & Next Steps**\n${summaryObj.closingNextSteps}`;
+    }
+    
+    return result.trim();
   }
 
   /**

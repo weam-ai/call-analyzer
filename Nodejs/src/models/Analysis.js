@@ -1,10 +1,19 @@
 const mongoose = require('mongoose');
 
 const analysisSchema = new mongoose.Schema({
-  userId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true
+  user: {
+    email: {
+      type: String,
+      default: null
+    },
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      default: null
+    },
+    companyId: {
+      type: String,
+      default: null
+    }
   },
   serviceType: {
     type: String,
@@ -27,6 +36,7 @@ const analysisSchema = new mongoose.Schema({
     },
     fathomUrl: String,
     transcript: String,
+    transcriptHash: String, // Hash for duplicate detection
     
     // Step 2: Product/Service Information (only one can be used)
     productServiceUrl: String,
@@ -212,4 +222,4 @@ analysisSchema.methods.addAnalysisResults = function(results) {
   return this.save();
 };
 
-module.exports = mongoose.model('Analysis', analysisSchema);
+module.exports = mongoose.model('Analysis', analysisSchema, 'agent_sales_call_analyzer');

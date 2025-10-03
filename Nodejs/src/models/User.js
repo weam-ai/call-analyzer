@@ -85,4 +85,4 @@ userSchema.methods.updateLastLogin = function() {
   return this.save();
 };
 
-module.exports = mongoose.model('User', userSchema);
+module.exports = mongoose.model('User', userSchema, 'agent_sales_call_users');

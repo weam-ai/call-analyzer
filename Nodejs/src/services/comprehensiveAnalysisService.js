@@ -304,9 +304,17 @@ By adhering to these guidelines, provide sales teams with actionable insights an
     try {
       await this.initialize();
 
+      // Get user information for the user object
+      const User = require('../models/User');
+      const user = await User.findById(analysisData.userId);
+
       // Create analysis record
       const analysis = new Analysis({
-        userId: analysisData.userId,
+        user: user ? {
+          email: user.email || null,
+          userId: user._id || null,
+          companyId: user.companyId || null
+        } : null,
         serviceType: analysisData.serviceType,
         status: 'processing',
         input: {
@@ -389,12 +397,18 @@ By adhering to these guidelines, provide sales teams with actionable insights an
       const audioAnalysisService = require('./audioAnalysisService');
       const result = await audioAnalysisService.processAudioAnalysis(
         audioFile, 
-        analysis.userId,
+        analysis.user.userId,
         {
           additionalContent: '',
           analysisType: 'comprehensive'
-        }
+        },
+        analysis // Pass existing analysis record to avoid duplicates
       );
+      
+      // Update the existing analysis with the audio processing results
+      analysis.processing.transcript = result.processing.transcript;
+      analysis.processing.llmAnalysis = result.processing.llmAnalysis;
+      await analysis.save();
       
       return {
         transcript: result.processing.transcript.text,
@@ -654,6 +668,14 @@ Please provide a comprehensive analysis in the following JSON format:
         parsedResults = this.createFallbackResults(analysisText);
       }
 
+      // Ensure callDescription and summary are strings, not objects
+      if (parsedResults.callDescription && typeof parsedResults.callDescription === 'object') {
+        parsedResults.callDescription = this.serializeCallDescription(parsedResults.callDescription);
+      }
+      if (parsedResults.summary && typeof parsedResults.summary === 'object') {
+        parsedResults.summary = this.serializeSummary(parsedResults.summary);
+      }
+
       // Update analysis with processing details
       analysis.processing.llmAnalysis = {
         prompt: prompt,
@@ -675,6 +697,69 @@ Please provide a comprehensive analysis in the following JSON format:
       logger.error('Comprehensive analysis generation failed:', error);
       throw error;
     }
+  }
+
+  serializeCallDescription(callDescObj) {
+    if (typeof callDescObj === 'string') {
+      return callDescObj;
+    }
+    
+    let result = '';
+    if (callDescObj.title) {
+      result += `**${callDescObj.title}**\n\n`;
+    }
+    
+    if (callDescObj.participants && Array.isArray(callDescObj.participants)) {
+      result += '**Participants**:\n';
+      callDescObj.participants.forEach(participant => {
+        result += `• ${participant.name} (${participant.role})`;
+        if (participant.company) {
+          result += ` - ${participant.company}`;
+        }
+        result += '\n';
+      });
+      result += '\n';
+    }
+    
+    if (callDescObj.purpose) {
+      result += `**Purpose**: ${callDescObj.purpose}\n\n`;
+    }
+    
+    if (callDescObj.keyTopics && Array.isArray(callDescObj.keyTopics)) {
+      result += '**Key Topics**:\n';
+      callDescObj.keyTopics.forEach(topic => {
+        result += `• ${topic}\n`;
+      });
+      result += '\n';
+    }
+    
+    if (callDescObj.tone) {
+      result += `**Tone**: ${callDescObj.tone}\n\n`;
+    }
+    
+    return result.trim();
+  }
+
+  serializeSummary(summaryObj) {
+    if (typeof summaryObj === 'string') {
+      return summaryObj;
+    }
+    
+    let result = '**Call Summary**\n\n';
+    
+    if (summaryObj.openingDiscovery) {
+      result += `**Opening & Discovery**\n${summaryObj.openingDiscovery}\n\n`;
+    }
+    
+    if (summaryObj.solutionPresentation) {
+      result += `**Solution Presentation**\n${summaryObj.solutionPresentation}\n\n`;
+    }
+    
+    if (summaryObj.closingNextSteps) {
+      result += `**Closing & Next Steps**\n${summaryObj.closingNextSteps}`;
+    }
+    
+    return result.trim();
   }
 
   createFallbackResults(analysisText) {
