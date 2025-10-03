@@ -1,11 +1,13 @@
 import axios from 'axios'
 import { Analysis, AnalysisStats, AuthResponse, ApiResponse } from '@/types/analysis'
+import { apiUrl } from '@/config/frontend-config'
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api'
+const API_BASE_URL = apiUrl
 
 // Create axios instance
 const api = axios.create({
   baseURL: API_BASE_URL,
+  timeout: 30000, // 30 seconds default timeout
   headers: {
     'Content-Type': 'application/json',
   },

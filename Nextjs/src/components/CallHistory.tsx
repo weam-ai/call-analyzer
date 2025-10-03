@@ -45,7 +45,7 @@ export function CallHistory({ onAnalysisSelect, onAnalysisDelete }: CallHistoryP
   const fetchAnalyses = async (page = 1) => {
     try {
       setLoading(true)
-      const response = await fetch(`http://localhost:5001/api/comprehensive/?page=${page}&limit=10`)
+      const response = await fetch(`http://localhost:5000/api/comprehensive/?page=${page}&limit=10`)
       const data = await response.json()
       
       if (data.success) {
@@ -68,7 +68,7 @@ export function CallHistory({ onAnalysisSelect, onAnalysisDelete }: CallHistoryP
     if (!confirm('Are you sure you want to delete this analysis?')) return
 
     try {
-      const response = await fetch(`http://localhost:5001/api/comprehensive/${analysisId}`, {
+      const response = await fetch(`http://localhost:5000/api/comprehensive/${analysisId}`, {
         method: 'DELETE'
       })
       

@@ -22,6 +22,7 @@ import {
   CheckCircle2
 } from 'lucide-react'
 import { Analysis } from '@/types/analysis'
+import { apiUrl } from '@/config/frontend-config'
 
 interface ComprehensiveAnalysisWizardProps {
   onAnalysisComplete: (analysis: Analysis) => void
@@ -163,7 +164,7 @@ export function ComprehensiveAnalysisWizard({
         formData.append('customPrompt', wizardData.customPrompt)
       }
 
-      const response = await fetch('http://localhost:5001/api/comprehensive/', {
+      const response = await fetch(`${apiUrl}/comprehensive/`, {
         method: 'POST',
         body: formData
       })

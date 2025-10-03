@@ -23,6 +23,7 @@ import {
 } from 'lucide-react'
 import { Analysis } from '@/types/analysis'
 import { formatText, toPlainText } from '@/utils/textFormatter'
+import { apiUrl } from '@/config/frontend-config'
 
 interface AnalysisDashboardProps {
   onAnalysisSelect: (analysis: Analysis) => void
@@ -53,7 +54,7 @@ export function AnalysisDashboard({ onAnalysisSelect, onAnalysisDelete }: Analys
   const fetchAnalyses = async () => {
     try {
       setLoading(true)
-      const response = await fetch('http://localhost:5001/api/comprehensive/')
+      const response = await fetch(`${apiUrl}/comprehensive/`)
       const data = await response.json()
       
       if (data.success) {
@@ -70,7 +71,7 @@ export function AnalysisDashboard({ onAnalysisSelect, onAnalysisDelete }: Analys
 
   const fetchStats = async () => {
     try {
-      const response = await fetch('http://localhost:5001/api/comprehensive/stats/overview')
+      const response = await fetch(`${apiUrl}/comprehensive/stats/overview`)
       const data = await response.json()
       
       if (data.success) {
@@ -83,7 +84,7 @@ export function AnalysisDashboard({ onAnalysisSelect, onAnalysisDelete }: Analys
 
   const handleDelete = async (analysisId: string) => {
     try {
-      const response = await fetch(`http://localhost:5001/api/comprehensive/${analysisId}`, {
+      const response = await fetch(`${apiUrl}/comprehensive/${analysisId}`, {
         method: 'DELETE'
       })
       
