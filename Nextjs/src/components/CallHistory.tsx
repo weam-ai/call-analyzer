@@ -25,7 +25,7 @@ import {
   Lightbulb
 } from 'lucide-react'
 import { Analysis } from '@/types/analysis'
-import { formatText, toPlainText } from '@/utils/textFormatter'
+import { formatText, toPlainText, getAnalysisTitle } from '@/utils/textFormatter'
 
 interface CallHistoryProps {
   onAnalysisSelect: (analysis: Analysis) => void
@@ -312,17 +312,8 @@ export function CallHistory({ onAnalysisSelect, onAnalysisDelete }: CallHistoryP
 
                     <div className="space-y-2 mb-4">
                       <h3 className="font-semibold text-gray-900 truncate">
-                        {analysis.input?.fathomUrl || 
-                         analysis.input?.audioFile?.originalName || 
-                         'Transcript Analysis'}
+                        {getAnalysisTitle(analysis)}
                       </h3>
-                      
-                      <div 
-                        className="text-sm text-gray-600 line-clamp-2 prose prose-sm max-w-none"
-                        dangerouslySetInnerHTML={{ 
-                          __html: formatText(analysis.results?.summary || 'Analysis in progress...')
-                        }}
-                      />
                     </div>
 
                     <div className="flex items-center gap-4 text-sm text-gray-500">

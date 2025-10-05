@@ -67,6 +67,28 @@ async function getDemoUser() {
   }
 }
 
+
+// Helper function to get user data from request
+function getUserDataFromRequest(req) {
+  let userId = null;
+  let email = null;
+  let companyId = null;
+  
+  // Try to get user data from request body (FormData)
+  if (req.body.userId) {
+    userId = req.body.userId;
+    email = req.body.email;
+    companyId = req.body.companyId;
+  }
+  
+  // Only return non-null values if we have actual user data
+  return {
+    userId: userId && userId !== 'null' && userId !== '' ? userId : null,
+    email: email && email !== 'null' && email !== '' ? email : null,
+    companyId: companyId && companyId !== 'null' && companyId !== '' ? companyId : null
+  };
+}
+
 // Comprehensive Analysis - Main endpoint
 router.post('/', upload.fields([
   { name: 'audioFile', maxCount: 1 },
@@ -100,7 +122,17 @@ router.post('/', upload.fields([
       customPrompt
     } = req.body;
 
-    const demoUser = await getDemoUser();
+    // Get user data from request
+    const userData = getUserDataFromRequest(req);
+    
+    // Use provided user data or fall back to demo user
+    let userId;
+    if (userData.userId) {
+      userId = userData.userId;
+    } else {
+      const demoUser = await getDemoUser();
+      userId = demoUser._id;
+    }
 
     // Validate that only one call data type is provided
     let callDataCount = 0;
@@ -129,8 +161,9 @@ router.post('/', upload.fields([
 
     // Prepare analysis data
     const analysisData = {
-      userId: demoUser._id,
+      userId: userId,
       serviceType: callDataType,
+      userData: userData,
       input: {
         promptType: promptType,
         customPrompt: customPrompt

@@ -402,7 +402,7 @@ Please analyze the following audio file and provide a comprehensive sales call a
   /**
    * Process complete audio file upload and analysis
    */
-  async processAudioFile(filePath, userId, additionalContent = '', existingAnalysis = null) {
+  async processAudioFile(filePath, userId, additionalContent = '', existingAnalysis = null, userData = null) {
     try {
       let analysis;
       
@@ -413,17 +413,31 @@ Please analyze the following audio file and provide a comprehensive sales call a
         analysis.input.filePath = filePath;
         await analysis.save();
       } else {
-        // Get user information for the user object
-        const User = require('../models/User');
-        const user = await User.findById(userId);
+        // Create user object from session data
+        let userObject = null;
+        if (userData && (userData.userId || userData.email)) {
+          // Use session user data if available
+          userObject = {
+            email: userData.email || null,
+            userId: userData.userId || null,
+            companyId: userData.companyId || null
+          };
+        } else {
+          // Fall back to demo user data from database
+          const User = require('../models/User');
+          const user = await User.findById(userId);
+          if (user) {
+            userObject = {
+              email: user.email || null,
+              userId: user._id || null,
+              companyId: user.companyId || null
+            };
+          }
+        }
 
-        // Create new analysis record
+        // Create new analysis record using user object
         analysis = new Analysis({
-          user: user ? {
-            email: user.email || null,
-            userId: user._id || null,
-            companyId: user.companyId || null
-          } : null,
+          user: userObject,
           serviceType: 'audio',
           status: 'processing',
           input: { filePath }

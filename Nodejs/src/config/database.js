@@ -3,8 +3,8 @@ const logger = require('../utils/logger');
 const config = require('./backend-config');
 
 const connectDB = async () => {
+  let mongoURI;
   try {
-    let mongoURI;
 
     // First try to get MONGODB_URI (check for both null and empty string)
     mongoURI = config.mongodbUri;

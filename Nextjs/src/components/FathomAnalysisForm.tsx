@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { analysisApi } from '@/lib/api'
 import { Analysis } from '@/types/analysis'
+import { getSessionData } from '@/actions/session'
 import { Link, Loader2, Video } from 'lucide-react'
 
 interface FathomAnalysisFormProps {

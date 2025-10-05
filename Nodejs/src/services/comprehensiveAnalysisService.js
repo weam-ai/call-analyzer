@@ -304,17 +304,31 @@ By adhering to these guidelines, provide sales teams with actionable insights an
     try {
       await this.initialize();
 
-      // Get user information for the user object
-      const User = require('../models/User');
-      const user = await User.findById(analysisData.userId);
+      // Create user object from session data
+      let userObject = null;
+      if (analysisData.userData && (analysisData.userData.userId || analysisData.userData.email)) {
+        // Use session user data if available
+        userObject = {
+          email: analysisData.userData.email || null,
+          userId: analysisData.userData.userId || null,
+          companyId: analysisData.userData.companyId || null
+        };
+      } else {
+        // Fall back to demo user data from database
+        const User = require('../models/User');
+        const user = await User.findById(analysisData.userId);
+        if (user) {
+          userObject = {
+            email: user.email || null,
+            userId: user._id || null,
+            companyId: user.companyId || null
+          };
+        }
+      }
 
-      // Create analysis record
+      // Create analysis record using user object
       const analysis = new Analysis({
-        user: user ? {
-          email: user.email || null,
-          userId: user._id || null,
-          companyId: user.companyId || null
-        } : null,
+        user: userObject,
         serviceType: analysisData.serviceType,
         status: 'processing',
         input: {
@@ -591,11 +605,23 @@ ${callData.transcript}
 PRODUCT/SERVICE INFORMATION:
 ${productServiceData.content || 'No product/service information provided'}
 
+**CRITICAL: You MUST respond with ONLY valid JSON format. Do not include any explanatory text, markdown formatting, or code blocks. Return ONLY the JSON object.**
+
 Please provide a comprehensive analysis in the following JSON format:
 {
   "callDescription": "Brief description of the call between both parties",
   "summary": "High-level overview of the call outcome",
   "callRating": 8,
+  "callRatingBreakdown": {
+    "engagementQuality": 8,
+    "responsiveness": 7,
+    "discoverySkills": 6,
+    "valueProposition": 8,
+    "objectionHandling": 0,
+    "closingAttempts": 9,
+    "followUpPlanning": 8,
+    "overallCallFlow": 7
+  },
   "prospectDemographics": {
     "teamSize": "Small team (5-10 people)",
     "workVolume": "Medium volume",
@@ -646,7 +672,9 @@ Please provide a comprehensive analysis in the following JSON format:
       }
     ]
   }
-}`;
+}
+
+**IMPORTANT: Return ONLY the JSON object above, with no additional text, explanations, or formatting.**`;
 
       const result = await this.model.generateContent(fullPrompt);
       const response = await result.response;
@@ -654,18 +682,67 @@ Please provide a comprehensive analysis in the following JSON format:
 
       const processingTime = Date.now() - startTime;
 
-      // Parse the JSON response
+      // Parse the JSON response with improved error handling
       let parsedResults;
+      let jsonText = analysisText.trim();
+      
       try {
-        const jsonMatch = analysisText.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          parsedResults = JSON.parse(jsonMatch[0]);
-        } else {
-          throw new Error('No JSON found in response');
+        // First, try to find and extract JSON from the response
+        
+        // Remove markdown code blocks if present
+        if (jsonText.includes('```json')) {
+          const jsonMatch = jsonText.match(/```json\s*([\s\S]*?)\s*```/);
+          if (jsonMatch) {
+            jsonText = jsonMatch[1].trim();
+          }
+        } else if (jsonText.includes('```')) {
+          const jsonMatch = jsonText.match(/```\s*([\s\S]*?)\s*```/);
+          if (jsonMatch) {
+            jsonText = jsonMatch[1].trim();
+          }
         }
+        
+        // Try to find JSON object boundaries
+        const jsonMatch = jsonText.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          jsonText = jsonMatch[0];
+        }
+        
+        // Clean up common issues
+        jsonText = jsonText
+          .replace(/,(\s*[}\]])/g, '$1') // Remove trailing commas
+          .replace(/\n\s*/g, ' ') // Replace newlines with spaces
+          .replace(/\s+/g, ' ') // Normalize whitespace
+          .trim();
+        
+        logger.info('Attempting to parse JSON:', { 
+          jsonLength: jsonText.length, 
+          preview: jsonText.substring(0, 200),
+          hasJsonStructure: jsonText.includes('{') && jsonText.includes('}')
+        });
+        
+        parsedResults = JSON.parse(jsonText);
+        
+        // Validate and fix the parsed results
+        parsedResults = this.validateAndFixJson(parsedResults);
+        
+        logger.info('Successfully parsed and validated JSON response');
+        
       } catch (parseError) {
-        logger.warn('Failed to parse JSON response, using fallback');
-        parsedResults = this.createFallbackResults(analysisText);
+        logger.warn('Failed to parse JSON response, using fallback', { 
+          error: parseError.message,
+          responsePreview: analysisText.substring(0, 500),
+          jsonAttempt: jsonText ? jsonText.substring(0, 200) : 'No JSON extracted'
+        });
+        
+        // Try to extract some information from the raw response
+        const extractedData = this.extractDataFromText(analysisText);
+        if (extractedData && Object.keys(extractedData).length > 0) {
+          parsedResults = this.validateAndFixJson(extractedData);
+          logger.info('Successfully extracted data from text response');
+        } else {
+          parsedResults = this.createFallbackResults(analysisText);
+        }
       }
 
       // Ensure callDescription and summary are strings, not objects
@@ -760,6 +837,114 @@ Please provide a comprehensive analysis in the following JSON format:
     }
     
     return result.trim();
+  }
+
+  /**
+   * Extract structured data from text response when JSON parsing fails
+   */
+  extractDataFromText(text) {
+    try {
+      const result = {};
+      
+      // Try to extract call rating
+      const ratingMatch = text.match(/callRating[:\s]*(\d+)/i);
+      if (ratingMatch) {
+        result.callRating = parseInt(ratingMatch[1]);
+      }
+      
+      // Try to extract call description
+      const descMatch = text.match(/callDescription[:\s]*["']?([^"'\n]+)["']?/i);
+      if (descMatch) {
+        result.callDescription = descMatch[1].trim();
+      }
+      
+      // Try to extract summary
+      const summaryMatch = text.match(/summary[:\s]*["']?([^"'\n]+)["']?/i);
+      if (summaryMatch) {
+        result.summary = summaryMatch[1].trim();
+      }
+      
+      // Try to extract insights
+      const insightsMatch = text.match(/keyInsights[:\s]*\[([^\]]+)\]/i);
+      if (insightsMatch) {
+        result.keyInsights = insightsMatch[1].split(',').map(item => item.trim().replace(/["']/g, ''));
+      }
+      
+      // Try to extract recommendations
+      const recMatch = text.match(/recommendations[:\s]*\[([^\]]+)\]/i);
+      if (recMatch) {
+        result.recommendations = recMatch[1].split(',').map(item => item.trim().replace(/["']/g, ''));
+      }
+      
+      // Return result if we extracted at least some data
+      return Object.keys(result).length > 0 ? result : null;
+    } catch (error) {
+      logger.warn('Failed to extract data from text:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Validate and fix JSON structure
+   */
+  validateAndFixJson(parsedResults) {
+    const requiredFields = [
+      'callDescription', 'summary', 'callRating', 'prospectDemographics', 
+      'salesPerformance', 'keyInsights', 'recommendations', 'otherNotableFindings', 
+      'salesOpportunities'
+    ];
+
+    // Ensure all required fields exist
+    for (const field of requiredFields) {
+      if (!parsedResults[field]) {
+        if (field === 'keyInsights' || field === 'recommendations' || field === 'otherNotableFindings') {
+          parsedResults[field] = [];
+        } else if (field === 'prospectDemographics' || field === 'salesPerformance' || field === 'salesOpportunities') {
+          parsedResults[field] = {};
+        } else {
+          parsedResults[field] = 'Not specified';
+        }
+      }
+    }
+
+    // Ensure arrays are actually arrays
+    ['keyInsights', 'recommendations', 'otherNotableFindings'].forEach(field => {
+      if (!Array.isArray(parsedResults[field])) {
+        parsedResults[field] = [];
+      }
+    });
+
+    // Ensure callRating is a number
+    if (typeof parsedResults.callRating !== 'number') {
+      parsedResults.callRating = 6;
+    }
+
+    // Add callRatingBreakdown if missing
+    if (!parsedResults.callRatingBreakdown) {
+      parsedResults.callRatingBreakdown = {
+        engagementQuality: parsedResults.callRating,
+        responsiveness: parsedResults.callRating,
+        discoverySkills: parsedResults.callRating,
+        valueProposition: parsedResults.callRating,
+        objectionHandling: 0,
+        closingAttempts: parsedResults.callRating,
+        followUpPlanning: parsedResults.callRating,
+        overallCallFlow: parsedResults.callRating
+      };
+    }
+
+    // Ensure salesOpportunities has the required structure
+    if (!parsedResults.salesOpportunities.productServiceGap) {
+      parsedResults.salesOpportunities.productServiceGap = [];
+    }
+    if (!parsedResults.salesOpportunities.upsellingOpportunities) {
+      parsedResults.salesOpportunities.upsellingOpportunities = [];
+    }
+    if (!parsedResults.salesOpportunities.crossSellingOpportunities) {
+      parsedResults.salesOpportunities.crossSellingOpportunities = [];
+    }
+
+    return parsedResults;
   }
 
   createFallbackResults(analysisText) {

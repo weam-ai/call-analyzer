@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { analysisApi } from '@/lib/api'
 import { Analysis } from '@/types/analysis'
+import { getSessionData } from '@/actions/session'
 import { FileText, Loader2 } from 'lucide-react'
 
 interface TranscriptAnalysisFormProps {

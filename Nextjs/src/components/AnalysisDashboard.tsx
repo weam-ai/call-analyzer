@@ -22,7 +22,7 @@ import {
   Download
 } from 'lucide-react'
 import { Analysis } from '@/types/analysis'
-import { formatText, toPlainText } from '@/utils/textFormatter'
+import { formatText, toPlainText, getAnalysisTitle } from '@/utils/textFormatter'
 import { apiUrl } from '@/config/frontend-config'
 
 interface AnalysisDashboardProps {
@@ -297,7 +297,7 @@ export function AnalysisDashboard({ onAnalysisSelect, onAnalysisDelete }: Analys
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center space-x-2 mb-1">
                             <h3 className="text-sm font-semibold text-gray-900 truncate">
-                              {analysis.input?.fathomUrl || analysis.input?.audioFile?.originalName || 'Analysis'}
+                              {getAnalysisTitle(analysis)}
                             </h3>
                             {analysis.results?.sentiment?.overall && (
                               <span className={`text-sm font-medium ${getSentimentColor(analysis.results.sentiment.overall)}`}>
@@ -347,16 +347,6 @@ export function AnalysisDashboard({ onAnalysisSelect, onAnalysisDelete }: Analys
                       </div>
                     </div>
                     
-                    {analysis.results?.summary && (
-                      <div className="mt-3 p-3 bg-gray-50 rounded-lg">
-                        <div 
-                          className="text-sm text-gray-700 line-clamp-2 prose prose-sm max-w-none"
-                          dangerouslySetInnerHTML={{ 
-                            __html: formatText(analysis.results.summary)
-                          }}
-                        />
-                      </div>
-                    )}
                   </CardContent>
                 </Card>
               ))}

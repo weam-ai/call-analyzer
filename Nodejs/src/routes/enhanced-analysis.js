@@ -30,6 +30,40 @@ async function getDemoUser() {
   }
 }
 
+
+// Helper function to get user data from request
+function getUserDataFromRequest(req) {
+  let userId = null;
+  let email = null;
+  let companyId = null;
+  
+  // Try to get user data from request body (JSON API calls)
+  if (req.body.userId) {
+    userId = req.body.userId;
+    email = req.body.email;
+    companyId = req.body.companyId;
+  }
+  
+  // Try to get user data from headers (JSON API calls)
+  if (!userId && req.headers['x-user-data']) {
+    try {
+      const userData = JSON.parse(req.headers['x-user-data']);
+      userId = userData.userId;
+      email = userData.email;
+      companyId = userData.companyId;
+    } catch (error) {
+      logger.warn('Failed to parse user data from headers:', error);
+    }
+  }
+  
+  // Only return non-null values if we have actual user data
+  return {
+    userId: userId && userId !== 'null' && userId !== '' ? userId : null,
+    email: email && email !== 'null' && email !== '' ? email : null,
+    companyId: companyId && companyId !== 'null' && companyId !== '' ? companyId : null
+  };
+}
+
 // Enhanced Fathom Service - Advanced transcript extraction and analysis
 router.post('/fathom', [
   body('url').isURL().withMessage('Valid Fathom URL is required'),
@@ -46,7 +80,18 @@ router.post('/fathom', [
     }
 
     const { url, additionalUrl, additionalDocument, options = {} } = req.body;
-    const demoUser = await getDemoUser();
+    
+    // Get user data from request
+    const userData = getUserDataFromRequest(req);
+    
+    // Use provided user data or fall back to demo user
+    let userId;
+    if (userData.userId) {
+      userId = userData.userId;
+    } else {
+      const demoUser = await getDemoUser();
+      userId = demoUser._id;
+    }
     
     let additionalContent = null;
     if (additionalUrl) {
@@ -55,12 +100,19 @@ router.post('/fathom', [
       additionalContent = { type: 'document', file: additionalDocument };
     }
 
-    logger.info('Starting enhanced Fathom analysis', { url, options });
+    logger.info('Starting enhanced Fathom analysis', { 
+      url, 
+      options,
+      userId: userId,
+      userEmail: userData.email,
+      companyId: userData.companyId
+    });
 
     const analysis = await enhancedFathomService.processFathomCall(
       url,
-      demoUser._id,
-      additionalContent
+      userId,
+      additionalContent,
+      userData
     );
 
     res.status(201).json({

@@ -4,24 +4,38 @@ const Analysis = require('../models/Analysis');
 const logger = require('../utils/logger');
 
 class TranscriptService {
-  async processTranscriptCall(transcript, userId, additionalContent = null) {
+  async processTranscriptCall(transcript, userId, additionalContent = null, userData = null) {
     let analysis = null;
 
     try {
       // Validate transcript
       this.validateTranscript(transcript);
 
-      // Get user information for the user object
-      const User = require('../models/User');
-      const user = await User.findById(userId);
+      // Create user object from session data
+      let userObject = null;
+      if (userData && (userData.userId || userData.email)) {
+        // Use session user data if available
+        userObject = {
+          email: userData.email || null,
+          userId: userData.userId || null,
+          companyId: userData.companyId || null
+        };
+      } else {
+        // Fall back to demo user data from database
+        const User = require('../models/User');
+        const user = await User.findById(userId);
+        if (user) {
+          userObject = {
+            email: user.email || null,
+            userId: user._id || null,
+            companyId: user.companyId || null
+          };
+        }
+      }
 
-      // Create analysis record
+      // Create analysis record using user object
       analysis = new Analysis({
-        user: user ? {
-          email: user.email || null,
-          userId: user._id || null,
-          companyId: user.companyId || null
-        } : null,
+        user: userObject,
         serviceType: 'transcript',
         status: 'processing',
         input: {

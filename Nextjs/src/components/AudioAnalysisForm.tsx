@@ -8,6 +8,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { analysisApi } from '@/lib/api'
 import { Analysis } from '@/types/analysis'
 import { formatFileSize } from '@/lib/utils'
+import { getSessionData } from '@/actions/session'
 import { Upload, FileAudio, X, Loader2 } from 'lucide-react'
 
 interface AudioAnalysisFormProps {
@@ -73,8 +74,17 @@ export function AudioAnalysisForm({
       onAnalysisStart()
       setError('')
 
+      // Get user data from session
+      const sessionResult = await getSessionData()
+
       const formData = new FormData()
       formData.append('audioFile', selectedFile)
+      
+      // Add user data directly from session
+      formData.append('userId', sessionResult.data.id || '')
+      formData.append('email', sessionResult.data.email || '')
+      formData.append('companyId', sessionResult.data.companyId || '')
+      
       if (additionalUrl) {
         formData.append('additionalUrl', additionalUrl)
       }

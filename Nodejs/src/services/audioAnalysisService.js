@@ -46,7 +46,8 @@ class AudioAnalysisService {
           tempFilePath,
           userId,
           additionalContent,
-          existingAnalysis
+          existingAnalysis,
+          options.userData
         );
 
         // Add website context if provided

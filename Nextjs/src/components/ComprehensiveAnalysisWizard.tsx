@@ -23,6 +23,7 @@ import {
 } from 'lucide-react'
 import { Analysis } from '@/types/analysis'
 import { apiUrl } from '@/config/frontend-config'
+import { getSessionData } from '@/actions/session'
 
 interface ComprehensiveAnalysisWizardProps {
   onAnalysisComplete: (analysis: Analysis) => void
@@ -135,7 +136,15 @@ export function ComprehensiveAnalysisWizard({
     }
 
     try {
+      // Get user data from session
+      const sessionResult = await getSessionData()
+      
       const formData = new FormData()
+      
+      // Add user data directly from session
+      formData.append('userId', sessionResult.data.id || '')
+      formData.append('email', sessionResult.data.email || '')
+      formData.append('companyId', sessionResult.data.companyId || '')
       
       // Add call data
       formData.append('callDataType', wizardData.callDataType!)

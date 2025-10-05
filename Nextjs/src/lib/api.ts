@@ -1,6 +1,7 @@
 import axios from 'axios'
 import { Analysis, AnalysisStats, AuthResponse, ApiResponse } from '@/types/analysis'
 import { apiUrl } from '@/config/frontend-config'
+import { getSessionData } from '@/actions/session'
 
 const API_BASE_URL = apiUrl
 
@@ -13,10 +14,19 @@ const api = axios.create({
   },
 })
 
-// Request interceptor (no auth required)
+// Request interceptor to add user data
 api.interceptors.request.use(
-  (config) => {
-    // No authentication required - all requests are public
+  async (config) => {
+    // Get user data from session
+    const sessionResult = await getSessionData();
+    
+    // Add user data to request headers
+    config.headers['X-User-Data'] = JSON.stringify({
+      userId: sessionResult.data.id,
+      email: sessionResult.data.email,
+      companyId: sessionResult.data.companyId
+    });
+    
     return config
   },
   (error) => {
