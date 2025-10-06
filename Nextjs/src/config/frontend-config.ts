@@ -28,7 +28,7 @@ export interface FrontendConfig {
 const frontendConfig: FrontendConfig = {
   environment: process.env.NEXT_PUBLIC_ENVIRONMENT || 'development',
   basePath: process.env.NEXT_PUBLIC_BASE_PATH || '/call-analyzer',
-  apiUrl: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api',
+  apiUrl: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/call-analyzer-api',
   cookieName: process.env.NEXT_PUBLIC_COOKIE_NAME || 'weam',
   cookiePassword: process.env.NEXT_PUBLIC_COOKIE_PASSWORD || 'YczgOhDJQj0RRDR3ASnvOVoQUBV0PtSz',
   isDevelopment: process.env.NEXT_PUBLIC_ENVIRONMENT === 'development',

@@ -59,7 +59,7 @@ if (config.isDevelopment) {
     standardHeaders: true,
     legacyHeaders: false
   });
-  app.use('/api/', devLimiter);
+  app.use('/call-analyzer-api/', devLimiter);
 } else {
   // Production rate limiting
   const limiter = rateLimit({
@@ -72,7 +72,7 @@ if (config.isDevelopment) {
     standardHeaders: true,
     legacyHeaders: false
   });
-  app.use('/api/', limiter);
+  app.use('/call-analyzer-api/', limiter);
 }
 
 // Compression middleware
@@ -152,11 +152,11 @@ app.get('/call-analyzer-api/health', async (req, res) => {
 });
 
 // API routes
-app.use('/api/auth', authRoutes);
-app.use('/api/analysis', analysisRoutes);
-app.use('/api/enhanced', enhancedAnalysisRoutes);
-app.use('/api/comprehensive', comprehensiveAnalysisRoutes);
-app.use('/api/audio-analysis', audioAnalysisRoutes);
+app.use('/call-analyzer-api/auth', authRoutes);
+app.use('/call-analyzer-api/analysis', analysisRoutes);
+app.use('/call-analyzer-api/enhanced', enhancedAnalysisRoutes);
+app.use('/call-analyzer-api/comprehensive', comprehensiveAnalysisRoutes);
+app.use('/call-analyzer-api/audio-analysis', audioAnalysisRoutes);
 
 // Serve static files (if needed)
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
