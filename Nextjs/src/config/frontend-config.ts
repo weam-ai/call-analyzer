@@ -1,6 +1,7 @@
 /**
- * Frontend Configuration
- * Centralized configuration for environment variables and constants
+ * Frontend Configuration (TypeScript)
+ * Loads environment variables from the global .env file at the project root
+ * Only exposes NEXT_PUBLIC_* variables for the Next.js frontend
  */
 
 import path from 'path';
@@ -12,7 +13,7 @@ if (typeof window === 'undefined') {
   dotenv.config({ path: path.join(process.cwd(), '..', '.env') });
 }
 
-interface FrontendConfig {
+export interface FrontendConfig {
   environment: string;
   basePath: string;
   apiUrl: string;
@@ -20,6 +21,8 @@ interface FrontendConfig {
   cookiePassword: string;
   isDevelopment: boolean;
   isProduction: boolean;
+  isTest: boolean;
+  validate(): boolean;
 }
 
 const frontendConfig: FrontendConfig = {
@@ -30,26 +33,39 @@ const frontendConfig: FrontendConfig = {
   cookiePassword: process.env.NEXT_PUBLIC_COOKIE_PASSWORD || 'YczgOhDJQj0RRDR3ASnvOVoQUBV0PtSz',
   isDevelopment: process.env.NEXT_PUBLIC_ENVIRONMENT === 'development',
   isProduction: process.env.NEXT_PUBLIC_ENVIRONMENT === 'production',
+  isTest: process.env.NEXT_PUBLIC_ENVIRONMENT === 'test',
+
+  validate(): boolean {
+    const requiredVars = [
+      'NEXT_PUBLIC_ENVIRONMENT',
+      'NEXT_PUBLIC_API_URL',
+      'NEXT_PUBLIC_COOKIE_PASSWORD',
+    ];
+
+    const missing = requiredVars.filter((v) => !process.env[v]);
+    if (missing.length > 0) {
+      console.warn(`⚠️ Missing environment variables: ${missing.join(', ')}`);
+    }
+
+    return true;
+  },
 };
 
-// Validation
-const validateConfig = (): void => {
-  const requiredEnvVars = [
-    'NEXT_PUBLIC_API_URL'
-  ];
-  
-  const missingEnvVars = requiredEnvVars.filter(envVar => !process.env[envVar]);
-  
-  if (missingEnvVars.length > 0 && process.env.NODE_ENV === 'production') {
-    console.error(`Missing required environment variables: ${missingEnvVars.join(', ')}`);
-    throw new Error(`Missing required environment variables: ${missingEnvVars.join(', ')}`);
-  }
-};
-
-// Validate configuration on import
-validateConfig();
+// Run validation only on server side
+if (typeof window === 'undefined') {
+  frontendConfig.validate();
+}
 
 export default frontendConfig;
 
 // Export individual config properties for convenience
-export const { environment, basePath, apiUrl, cookieName, cookiePassword, isDevelopment, isProduction } = frontendConfig;
+export const { 
+  environment, 
+  basePath, 
+  apiUrl, 
+  cookieName, 
+  cookiePassword, 
+  isDevelopment, 
+  isProduction, 
+  isTest 
+} = frontendConfig;

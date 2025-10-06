@@ -20,8 +20,8 @@ const backendConfig = {
   uploadDir: process.env.UPLOAD_DIR || path.join(process.cwd(), 'uploads'), // Configurable upload directory
 
   // Logging
-  logLevel: process.env.LOG_LEVEL || 'info',
-  logFile: process.env.LOG_FILE || './logs/app.log',
+  logLevel: 'info',
+  logFile: './logs/app.log',
 
   // Rate Limiting
   rateLimitWindowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS, 10) || 900000, // 15 minutes
