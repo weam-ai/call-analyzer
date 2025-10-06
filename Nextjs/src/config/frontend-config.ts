@@ -3,6 +3,15 @@
  * Centralized configuration for environment variables and constants
  */
 
+import path from 'path';
+import dotenv from 'dotenv';
+
+// Load dotenv only on server side
+if (typeof window === 'undefined') {
+  // Load from root .env file (one level up from Nextjs directory)
+  dotenv.config({ path: path.join(process.cwd(), '..', '.env') });
+}
+
 interface FrontendConfig {
   environment: string;
   basePath: string;
