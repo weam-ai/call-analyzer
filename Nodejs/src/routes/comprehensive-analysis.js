@@ -81,12 +81,42 @@ function getUserDataFromRequest(req) {
     companyId = req.body.companyId;
   }
   
+  // Try to get user data from headers (JSON API calls)
+  if (!userId && req.headers['x-user-data']) {
+    try {
+      const userData = JSON.parse(req.headers['x-user-data']);
+      userId = userData.userId;
+      email = userData.email;
+      companyId = userData.companyId;
+    } catch (error) {
+      console.error('Error parsing user data from headers:', error);
+    }
+  }
+  
   // Only return non-null values if we have actual user data
   return {
     userId: userId && userId !== 'null' && userId !== '' ? userId : null,
     email: email && email !== 'null' && email !== '' ? email : null,
     companyId: companyId && companyId !== 'null' && companyId !== '' ? companyId : null
   };
+}
+
+// Helper function to get company ID from request (for GET requests)
+function getCompanyIdFromRequest(req) {
+  // Try to get from query params first
+  let companyId = req.query.companyId;
+  
+  // Try to get from headers if not in query
+  if (!companyId && req.headers['x-user-data']) {
+    try {
+      const userData = JSON.parse(req.headers['x-user-data']);
+      companyId = userData.companyId;
+    } catch (error) {
+      console.error('Error parsing user data from headers:', error);
+    }
+  }
+  
+  return companyId && companyId !== 'null' && companyId !== '' ? companyId : null;
 }
 
 // Comprehensive Analysis - Main endpoint
@@ -225,10 +255,10 @@ router.post('/', upload.fields([
 // Get analysis by ID
 router.get('/:id', async (req, res) => {
   try {
-    const { companyId = null } = req.query;
+    const companyId = getCompanyIdFromRequest(req);
     
     // Require company ID from session - no fallback to demo data
-    if (!companyId || companyId === 'null' || companyId === '') {
+    if (!companyId) {
       return res.status(400).json({
         success: false,
         message: 'Company ID is required to fetch analysis'
@@ -271,12 +301,13 @@ router.get('/', async (req, res) => {
       limit = 10, 
       search = '', 
       status = 'all', 
-      serviceType = 'all',
-      companyId = null
+      serviceType = 'all'
     } = req.query;
     
+    const companyId = getCompanyIdFromRequest(req);
+    
     // Require company ID from session - no fallback to demo data
-    if (!companyId || companyId === 'null' || companyId === '') {
+    if (!companyId) {
       return res.json({
         success: true,
         data: {
@@ -410,10 +441,10 @@ router.get('/', async (req, res) => {
 // Delete analysis
 router.delete('/:id', async (req, res) => {
   try {
-    const { companyId = null } = req.query;
+    const companyId = getCompanyIdFromRequest(req);
     
     // Require company ID from session - no fallback to demo data
-    if (!companyId || companyId === 'null' || companyId === '') {
+    if (!companyId) {
       return res.status(400).json({
         success: false,
         message: 'Company ID is required to delete analysis'
@@ -453,10 +484,10 @@ router.delete('/:id', async (req, res) => {
 // Get analysis statistics
 router.get('/stats/overview', async (req, res) => {
   try {
-    const { companyId = null } = req.query;
+    const companyId = getCompanyIdFromRequest(req);
     
     // Require company ID from session - no fallback to demo data
-    if (!companyId || companyId === 'null' || companyId === '') {
+    if (!companyId) {
       return res.json({
         success: true,
         data: {

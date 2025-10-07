@@ -32,9 +32,10 @@ import { apiUrl } from '@/config/frontend-config'
 interface CallHistoryProps {
   onAnalysisSelect: (analysis: Analysis) => void
   onAnalysisDelete: (analysisId: string) => void
+  user?: any // User data from session
 }
 
-export function CallHistory({ onAnalysisSelect, onAnalysisDelete }: CallHistoryProps) {
+export function CallHistory({ onAnalysisSelect, onAnalysisDelete, user }: CallHistoryProps) {
   const [allAnalyses, setAllAnalyses] = useState<Analysis[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
@@ -96,28 +97,14 @@ export function CallHistory({ onAnalysisSelect, onAnalysisDelete }: CallHistoryP
     }
   }
 
-  // Get company ID from session on component mount
+  // Set company ID from user prop
   useEffect(() => {
-    const getCompanyId = async () => {
-      try {
-        const response = await fetch('/call-analyzer/api/user/session')
-        const data = await response.json()
-        
-        if (data.success) {
-          setCompanyId(data.data.companyId)
-        } else {
-          console.error('Failed to get company ID from session:', data.message)
-          // No fallback - set to null to show no records
-          setCompanyId(null)
-        }
-      } catch (error) {
-        console.error('Failed to get company ID from session:', error)
-        // No fallback - set to null to show no records
-        setCompanyId(null)
-      }
+    if (user && user.companyId) {
+      setCompanyId(user.companyId)
+    } else {
+      setCompanyId(null)
     }
-    getCompanyId()
-  }, [])
+  }, [user])
 
   // No more client-side filtering - server handles everything
 
