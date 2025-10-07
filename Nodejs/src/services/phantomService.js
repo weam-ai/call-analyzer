@@ -10,17 +10,16 @@ class PhantomService {
     let browser = null;
 
     try {
-      // Get user information for the user object
-      const User = require('../models/User');
-      const user = await User.findById(userId);
+      // Create user object from session data only (no database queries)
+      const userObject = userId ? {
+        email: null,
+        userId: userId,
+        companyId: null
+      } : null;
 
       // Create analysis record
       analysis = new Analysis({
-        user: user ? {
-          email: user.email || null,
-          userId: user._id || null,
-          companyId: user.companyId || null
-        } : null,
+        user: userObject,
         serviceType: 'phantom',
         status: 'processing',
         input: {
