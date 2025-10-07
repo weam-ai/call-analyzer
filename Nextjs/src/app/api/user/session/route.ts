@@ -7,14 +7,14 @@ export async function GET(request: NextRequest) {
     
     if (!session.user) {
       return NextResponse.json({
-        success: false,
+        success: true,
         message: 'No user session found',
         data: {
           id: null,
           email: null,
           companyId: null
         }
-      }, { status: 401 })
+      })
     }
 
     return NextResponse.json({
@@ -28,13 +28,13 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('Error getting user session:', error)
     return NextResponse.json({
-      success: false,
-      message: 'Failed to get user session',
+      success: true,
+      message: 'Session not found',
       data: {
         id: null,
         email: null,
         companyId: null
       }
-    }, { status: 500 })
+    })
   }
 }
