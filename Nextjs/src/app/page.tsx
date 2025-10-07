@@ -1,11 +1,10 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { ComprehensiveAnalysisWizard } from '@/components/ComprehensiveAnalysisWizard'
 import { ComprehensiveAnalysisResults } from '@/components/ComprehensiveAnalysisResults'
 import { CallHistory } from '@/components/CallHistory'
-import { AuthenticatedWrapper } from '@/components/AuthenticatedWrapper'
 import { AuthorizationMessage } from '@/components/AuthorizationMessage'
 import { Analysis } from '@/types/analysis'
 import { BarChart3, TrendingUp, History, Plus, FileText, ArrowLeft, Search } from 'lucide-react'
@@ -15,6 +14,27 @@ export default function Home() {
   const [currentAnalysis, setCurrentAnalysis] = useState<Analysis | null>(null)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [currentView, setCurrentView] = useState<'wizard' | 'history'>('wizard')
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null)
+
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const response = await fetch('/call-analyzer/api/user/session')
+        const data = await response.json()
+        
+        // Check if we have valid session data
+        if (data.success && data.data && data.data.id && data.data.email) {
+          setIsAuthenticated(true)
+        } else {
+          setIsAuthenticated(false)
+        }
+      } catch (error) {
+        console.error('Failed to check authentication:', error)
+        setIsAuthenticated(false)
+      }
+    }
+    checkAuth()
+  }, [])
 
   const handleAnalysisStart = () => {
     setIsAnalyzing(true)
@@ -46,9 +66,25 @@ export default function Home() {
     setCurrentView('wizard')
   }
 
+  // Show loading state while checking authentication
+  if (isAuthenticated === null) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-gray-600">Checking authentication...</p>
+        </div>
+      </div>
+    )
+  }
+
+  // Show authorization message if not authenticated
+  if (!isAuthenticated) {
+    return <AuthorizationMessage />
+  }
+
   return (
-    <AuthenticatedWrapper>
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
       {/* Header */}
       <header className="bg-white/80 backdrop-blur-sm border-b border-slate-200 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -126,6 +162,5 @@ export default function Home() {
       </main>
 
       </div>
-    </AuthenticatedWrapper>
   )
 }

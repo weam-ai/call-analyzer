@@ -2,7 +2,7 @@
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Shield, ArrowRight, LogIn, Mic, Sparkles, BarChart3 } from "lucide-react"
+import { Shield, LogIn, Mic, Sparkles, BarChart3 } from "lucide-react"
 
 interface AuthorizationMessageProps {}
 
@@ -60,7 +60,7 @@ export function AuthorizationMessage({}: AuthorizationMessageProps) {
                 </div>
                 
                 <CardTitle className="text-3xl font-black mb-4">
-                  Authentication Required
+                  Authorization Required
                 </CardTitle>
                 <CardDescription className="text-lg text-gray-600 leading-relaxed font-medium">
                   You need to be authenticated to access your call analysis dashboard. 
@@ -76,7 +76,7 @@ export function AuthorizationMessage({}: AuthorizationMessageProps) {
                 <Button 
                   onClick={handleAuthRedirect}
                   size="lg"
-                  className="bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:from-blue-700 hover:to-purple-700 hover:text-white shadow-lg hover:shadow-xl transition-all duration-300"
+                  className="bg-black text-white hover:bg-gray-800 hover:text-white"
                 >
                                     
                   {/* Button Content */}
@@ -93,25 +93,6 @@ export function AuthorizationMessage({}: AuthorizationMessageProps) {
                     <span>Sign In to Continue</span>
                   </div>
                 </Button>
-              </div>
-
-              {/* Features Preview */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-8">
-                <div className="flex flex-col items-center p-4 rounded-lg bg-gray-50">
-                  <BarChart3 className="h-8 w-8 text-blue-600 mb-2" />
-                  <h3 className="font-semibold text-gray-900">Call Analytics</h3>
-                  <p className="text-sm text-gray-600 text-center">Analyze your sales calls with AI-powered insights</p>
-                </div>
-                <div className="flex flex-col items-center p-4 rounded-lg bg-gray-50">
-                  <Mic className="h-8 w-8 text-purple-600 mb-2" />
-                  <h3 className="font-semibold text-gray-900">Audio Processing</h3>
-                  <p className="text-sm text-gray-600 text-center">Upload and process audio files automatically</p>
-                </div>
-                <div className="flex flex-col items-center p-4 rounded-lg bg-gray-50">
-                  <Sparkles className="h-8 w-8 text-green-600 mb-2" />
-                  <h3 className="font-semibold text-gray-900">Smart Insights</h3>
-                  <p className="text-sm text-gray-600 text-center">Get actionable recommendations for improvement</p>
-                </div>
               </div>
 
               {/* Support Message */}
