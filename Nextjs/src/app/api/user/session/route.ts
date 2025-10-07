@@ -1,16 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getUserFromSession } from '@/utils/userSession'
+import { getSession } from '@/config/withSession'
 
 export async function GET(request: NextRequest) {
   try {
-    const user = await getUserFromSession()
+    const session = await getSession()
     
+    if (!session.user) {
+      return NextResponse.json({
+        success: false,
+        message: 'No user session found',
+        data: {
+          id: null,
+          email: null,
+          companyId: null
+        }
+      }, { status: 401 })
+    }
+
     return NextResponse.json({
       success: true,
       data: {
-        id: user.id.toString(),
-        email: user.email,
-        companyId: user.companyId.toString()
+        id: session.user._id,
+        email: session.user.email,
+        companyId: session.user.companyId
       }
     })
   } catch (error) {
