@@ -21,16 +21,7 @@ class TranscriptService {
           companyId: userData.companyId || null
         };
       } else {
-        // Fall back to demo user data from database
-        const User = require('../models/User');
-        const user = await User.findById(userId);
-        if (user) {
-          userObject = {
-            email: user.email || null,
-            userId: user._id || null,
-            companyId: user.companyId || null
-          };
-        }
+        logger.warn('No user data provided in session for transcript service');
       }
 
       // Create analysis record using user object

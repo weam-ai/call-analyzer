@@ -314,16 +314,7 @@ By adhering to these guidelines, provide sales teams with actionable insights an
           companyId: analysisData.userData.companyId || null
         };
       } else {
-        // Fall back to demo user data from database
-        const User = require('../models/User');
-        const user = await User.findById(analysisData.userId);
-        if (user) {
-          userObject = {
-            email: user.email || null,
-            userId: user._id || null,
-            companyId: user.companyId || null
-          };
-        }
+        logger.warn('No user data provided in session, continuing without user context');
       }
 
       // Create analysis record using user object
@@ -687,46 +678,76 @@ Please provide a comprehensive analysis in the following JSON format:
       let jsonText = analysisText.trim();
       
       try {
-        // First, try to find and extract JSON from the response
-        
-        // Remove markdown code blocks if present
-        if (jsonText.includes('```json')) {
-          const jsonMatch = jsonText.match(/```json\s*([\s\S]*?)\s*```/);
-          if (jsonMatch) {
-            jsonText = jsonMatch[1].trim();
+        // Try multiple strategies to extract and parse JSON
+        const strategies = [
+          // Strategy 1: Look for JSON in code blocks
+          () => {
+            const codeBlockMatch = analysisText.match(/```json\s*(\{[\s\S]*?\})\s*```/);
+            if (codeBlockMatch) {
+              return this.cleanJsonString(codeBlockMatch[1]);
+            }
+            return null;
+          },
+          // Strategy 2: Direct JSON extraction
+          () => {
+            const jsonMatch = analysisText.match(/\{[\s\S]*\}/);
+            if (jsonMatch) {
+              return this.cleanJsonString(jsonMatch[0]);
+            }
+            return null;
+          },
+          // Strategy 3: Smart brace counting to find proper JSON boundaries
+          () => {
+            const startIndex = analysisText.indexOf('{');
+            if (startIndex !== -1) {
+              let braceCount = 0;
+              let endIndex = startIndex;
+              for (let i = startIndex; i < analysisText.length; i++) {
+                if (analysisText[i] === '{') braceCount++;
+                if (analysisText[i] === '}') braceCount--;
+                if (braceCount === 0) {
+                  endIndex = i;
+                  break;
+                }
+              }
+              if (endIndex > startIndex) {
+                return this.cleanJsonString(analysisText.substring(startIndex, endIndex + 1));
+              }
+            }
+            return null;
           }
-        } else if (jsonText.includes('```')) {
-          const jsonMatch = jsonText.match(/```\s*([\s\S]*?)\s*```/);
-          if (jsonMatch) {
-            jsonText = jsonMatch[1].trim();
+        ];
+
+        // Try each strategy
+        let jsonText = null;
+        for (const strategy of strategies) {
+          try {
+            jsonText = strategy();
+            if (jsonText) {
+              logger.info('Attempting to parse JSON:', { 
+                jsonLength: jsonText.length, 
+                preview: jsonText.substring(0, 200),
+                hasJsonStructure: jsonText.includes('{') && jsonText.includes('}'),
+                strategy: strategies.indexOf(strategy) + 1
+              });
+              
+              parsedResults = JSON.parse(jsonText);
+              
+              // Validate and fix the parsed results
+              parsedResults = this.validateAndFixJson(parsedResults);
+              
+              logger.info('Successfully parsed and validated JSON response');
+              break;
+            }
+          } catch (strategyError) {
+            // Continue to next strategy
+            continue;
           }
         }
-        
-        // Try to find JSON object boundaries
-        const jsonMatch = jsonText.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          jsonText = jsonMatch[0];
+
+        if (!parsedResults) {
+          throw new Error('All JSON parsing strategies failed');
         }
-        
-        // Clean up common issues
-        jsonText = jsonText
-          .replace(/,(\s*[}\]])/g, '$1') // Remove trailing commas
-          .replace(/\n\s*/g, ' ') // Replace newlines with spaces
-          .replace(/\s+/g, ' ') // Normalize whitespace
-          .trim();
-        
-        logger.info('Attempting to parse JSON:', { 
-          jsonLength: jsonText.length, 
-          preview: jsonText.substring(0, 200),
-          hasJsonStructure: jsonText.includes('{') && jsonText.includes('}')
-        });
-        
-        parsedResults = JSON.parse(jsonText);
-        
-        // Validate and fix the parsed results
-        parsedResults = this.validateAndFixJson(parsedResults);
-        
-        logger.info('Successfully parsed and validated JSON response');
         
       } catch (parseError) {
         logger.warn('Failed to parse JSON response, using fallback', { 
@@ -1029,6 +1050,57 @@ Please provide a comprehensive analysis in the following JSON format:
     const inputCostPer1K = 0.00125;
     const outputCostPer1K = 0.005;
     return (tokens / 1000) * (inputCostPer1K + outputCostPer1K) / 2;
+  }
+
+  /**
+   * Clean JSON string to handle common parsing issues
+   */
+  cleanJsonString(jsonText) {
+    try {
+      // Remove code block markers
+      let cleaned = jsonText
+        .replace(/```json\s*/g, '')
+        .replace(/```\s*/g, '')
+        .trim();
+
+      // Try to find the JSON object boundaries more precisely
+      const startIndex = cleaned.indexOf('{');
+      const lastIndex = cleaned.lastIndexOf('}');
+      
+      if (startIndex !== -1 && lastIndex !== -1 && lastIndex > startIndex) {
+        cleaned = cleaned.substring(startIndex, lastIndex + 1);
+      }
+
+      // More aggressive cleaning for common issues
+      cleaned = cleaned
+        // Fix unescaped quotes in string values - more comprehensive
+        .replace(/"([^"]*)"([^"]*)"([^"]*)":/g, '"$1\\"$2\\"$3":')
+        .replace(/: "([^"]*)"([^"]*)"([^"]*)"/g, ': "$1\\"$2\\"$3"')
+        // Fix single quotes that should be escaped
+        .replace(/'/g, "\\'")
+        // Remove trailing commas
+        .replace(/,(\s*[}\]])/g, '$1')
+        // Fix newlines and carriage returns in string values
+        .replace(/"([^"]*)[\r\n]+([^"]*)"/g, '"$1\\n$2"')
+        // Fix other special characters that break JSON
+        .replace(/[\r\n\t]/g, ' ')
+        // Normalize whitespace
+        .replace(/\s+/g, ' ')
+        .trim();
+
+      // Try to validate the JSON structure
+      const testParse = JSON.parse(cleaned);
+      return cleaned;
+      
+    } catch (error) {
+      // If cleaning fails, return a more basic cleanup
+      return jsonText
+        .replace(/```json\s*/g, '')
+        .replace(/```\s*/g, '')
+        .replace(/,(\s*[}\]])/g, '$1')
+        .replace(/\s+/g, ' ')
+        .trim();
+    }
   }
 }
 

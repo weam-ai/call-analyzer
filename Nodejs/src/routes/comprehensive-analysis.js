@@ -225,10 +225,22 @@ router.post('/', upload.fields([
 // Get analysis by ID
 router.get('/:id', async (req, res) => {
   try {
-    const demoUser = await getDemoUser();
+    const { companyId = null } = req.query;
+    
+    // Require company ID from session - no fallback to demo data
+    if (!companyId || companyId === 'null' || companyId === '') {
+      return res.status(400).json({
+        success: false,
+        message: 'Company ID is required to fetch analysis'
+      });
+    }
+    
     const analysis = await Analysis.findOne({
       _id: req.params.id,
-      userId: demoUser._id
+      $or: [
+        { 'user.companyId': companyId },
+        { 'companyId': companyId }
+      ]
     }).populate('userId', 'name email');
 
     if (!analysis) {
@@ -254,10 +266,119 @@ router.get('/:id', async (req, res) => {
 // Get all analyses (call history)
 router.get('/', async (req, res) => {
   try {
-    const { page = 1, limit = 10 } = req.query;
+    const { 
+      page = 1, 
+      limit = 10, 
+      search = '', 
+      status = 'all', 
+      serviceType = 'all',
+      companyId = null
+    } = req.query;
     
-    const demoUser = await getDemoUser();
-    const query = { 'user.userId': demoUser._id };
+    // Require company ID from session - no fallback to demo data
+    if (!companyId || companyId === 'null' || companyId === '') {
+      return res.json({
+        success: true,
+        data: {
+          analyses: [],
+          pagination: {
+            current: parseInt(page),
+            pages: 0,
+            total: 0
+          }
+        }
+      });
+    }
+    
+    // Build the query only for the specific company
+    let userQuery = {
+      $or: [
+        { 'user.companyId': companyId },
+        { 'companyId': companyId }
+      ]
+    };
+
+    // Build the search query - only search visible list content
+    let searchQuery = {};
+    if (search && search.trim() !== '') {
+      const searchTerm = search.trim();
+      
+      // Create search conditions for only visible list fields
+      const searchConditions = [];
+      
+      // Service type (exact match) - what's shown in the blue/green/pink tags
+      if (['audio', 'fathom', 'transcript'].includes(searchTerm.toLowerCase())) {
+        searchConditions.push({ serviceType: searchTerm.toLowerCase() });
+      }
+      
+      // Status (exact match) - what's shown in the status tags
+      if (['pending', 'processing', 'completed', 'failed'].includes(searchTerm.toLowerCase())) {
+        searchConditions.push({ status: searchTerm.toLowerCase() });
+      }
+      
+      // Call rating (numeric) - what's shown as "8/10", "7/10" etc
+      if (!isNaN(searchTerm) && parseInt(searchTerm) >= 1 && parseInt(searchTerm) <= 10) {
+        searchConditions.push({ 'results.callRating': parseInt(searchTerm) });
+      }
+      
+      // High rating search
+      if (searchTerm.toLowerCase() === 'high') {
+        searchConditions.push({ 'results.callRating': { $gte: 8 } });
+      }
+      
+      // File names - what's shown in the title (audio file names)
+      searchConditions.push(
+        { 'input.audioFile.originalName': { $regex: searchTerm, $options: 'i' } }
+      );
+      
+      // Fathom URLs - what's shown in the title
+      searchConditions.push(
+        { 'input.fathomUrl': { $regex: searchTerm, $options: 'i' } }
+      );
+      
+      // Insight counts - what's shown as "5 insights", "4 insights" etc
+      if (searchTerm.toLowerCase().includes('insight')) {
+        const insightNumber = searchTerm.match(/\d+/);
+        if (insightNumber) {
+          searchConditions.push({ 'results.keyInsights': { $size: parseInt(insightNumber[0]) } });
+        }
+      }
+      
+      // Upselling/cross-selling counts - what's shown as "1 upselling", "1 cross-selling"
+      if (searchTerm.toLowerCase().includes('upselling') || searchTerm.toLowerCase().includes('upsell')) {
+        const upsellingNumber = searchTerm.match(/\d+/);
+        if (upsellingNumber) {
+          searchConditions.push({ 'results.salesOpportunities.upsellingOpportunities': { $size: parseInt(upsellingNumber[0]) } });
+        }
+      }
+      
+      if (searchTerm.toLowerCase().includes('cross') || searchTerm.toLowerCase().includes('selling')) {
+        const crossSellingNumber = searchTerm.match(/\d+/);
+        if (crossSellingNumber) {
+          searchConditions.push({ 'results.salesOpportunities.crossSellingOpportunities': { $size: parseInt(crossSellingNumber[0]) } });
+        }
+      }
+      
+      searchQuery = {
+        $or: searchConditions
+      };
+    }
+
+    // Combine all queries
+    let query = { ...userQuery };
+    if (Object.keys(searchQuery).length > 0) {
+      query = { $and: [userQuery, searchQuery] };
+    }
+
+    // Add status filter
+    if (status !== 'all') {
+      query.status = status;
+    }
+
+    // Add service type filter
+    if (serviceType !== 'all') {
+      query.serviceType = serviceType;
+    }
 
     const analyses = await Analysis.find(query)
       .sort({ createdAt: -1 })
@@ -289,11 +410,25 @@ router.get('/', async (req, res) => {
 // Delete analysis
 router.delete('/:id', async (req, res) => {
   try {
-    const demoUser = await getDemoUser();
-    const analysis = await Analysis.findOneAndDelete({
+    const { companyId = null } = req.query;
+    
+    // Require company ID from session - no fallback to demo data
+    if (!companyId || companyId === 'null' || companyId === '') {
+      return res.status(400).json({
+        success: false,
+        message: 'Company ID is required to delete analysis'
+      });
+    }
+    
+    let query = {
       _id: req.params.id,
-      'user.userId': demoUser._id
-    });
+      $or: [
+        { 'user.companyId': companyId },
+        { 'companyId': companyId }
+      ]
+    };
+
+    const analysis = await Analysis.findOneAndDelete(query);
 
     if (!analysis) {
       return res.status(404).json({
@@ -318,11 +453,37 @@ router.delete('/:id', async (req, res) => {
 // Get analysis statistics
 router.get('/stats/overview', async (req, res) => {
   try {
-    const demoUser = await getDemoUser();
-    const userId = demoUser._id;
+    const { companyId = null } = req.query;
+    
+    // Require company ID from session - no fallback to demo data
+    if (!companyId || companyId === 'null' || companyId === '') {
+      return res.json({
+        success: true,
+        data: {
+          overview: {
+            totalAnalyses: 0,
+            completedAnalyses: 0,
+            failedAnalyses: 0,
+            totalCost: 0,
+            avgProcessingTime: 0,
+            avgCallRating: 0
+          },
+          byService: []
+        }
+      });
+    }
+    
+    let matchQuery = { 
+      $or: [
+        { 'user.companyId': companyId },
+        { 'companyId': companyId }
+      ]
+    };
     
     const stats = await Analysis.aggregate([
-      { $match: { userId: userId } },
+      { 
+        $match: matchQuery
+      },
       {
         $group: {
           _id: null,
@@ -341,7 +502,9 @@ router.get('/stats/overview', async (req, res) => {
     ]);
 
     const serviceStats = await Analysis.aggregate([
-      { $match: { userId: userId } },
+      { 
+        $match: matchQuery
+      },
       {
         $group: {
           _id: '$serviceType',

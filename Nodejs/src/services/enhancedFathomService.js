@@ -34,14 +34,23 @@ class EnhancedFathomService {
   async initialize(analysisId, userId, options = {}) {
     try {
       this.analysis = await Analysis.findById(analysisId);
-      this.user = await User.findById(userId);
       
       if (!this.analysis) {
         throw new Error('Analysis not found');
       }
       
-      if (!this.user) {
-        throw new Error('User not found');
+      // Use session data directly (no database queries)
+      if (userId) {
+        // Create user object from session data
+        this.user = {
+          _id: userId,
+          userId: userId,
+          email: null,
+          companyId: null
+        };
+        logger.info('Using session user data for Fathom service', { userId });
+      } else {
+        logger.warn('No userId provided, continuing without user context');
       }
 
       // Initialize Google AI
@@ -95,6 +104,11 @@ class EnhancedFathomService {
       pageTimeout = this.config.pageTimeout,
       userAgent = this.config.userAgent
     } = options;
+
+    // Ensure URL has proper protocol
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      url = `https://${url}`;
+    }
 
     let retryCount = 0;
     
@@ -767,6 +781,11 @@ Daniel Nyberg: Yeah, sure. So I'm Daniel Nyberg on the VP of marketing at PlayGo
     try {
       if (!url) return '';
 
+      // Ensure URL has proper protocol
+      if (!url.startsWith('http://') && !url.startsWith('https://')) {
+        url = `https://${url}`;
+      }
+
       logger.info('Scraping additional content from URL', { url });
 
       const page = await this.context.newPage();
@@ -1273,17 +1292,126 @@ Transcript: ${transcript}`;
    */
   parseAnalysisResponse(responseText) {
     try {
-      // Try to extract JSON from response
-      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        return JSON.parse(jsonMatch[0]);
+      // Try multiple strategies to extract and parse JSON
+      const strategies = [
+        // Strategy 1: Look for JSON in code blocks
+        () => {
+          const codeBlockMatch = responseText.match(/```json\s*(\{[\s\S]*?\})\s*```/);
+          if (codeBlockMatch) {
+            return this.cleanJsonString(codeBlockMatch[1]);
+          }
+          return null;
+        },
+        // Strategy 2: Direct JSON extraction
+        () => {
+          const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            return this.cleanJsonString(jsonMatch[0]);
+          }
+          return null;
+        },
+        // Strategy 3: Smart brace counting to find proper JSON boundaries
+        () => {
+          const startIndex = responseText.indexOf('{');
+          if (startIndex !== -1) {
+            let braceCount = 0;
+            let endIndex = startIndex;
+            for (let i = startIndex; i < responseText.length; i++) {
+              if (responseText[i] === '{') braceCount++;
+              if (responseText[i] === '}') braceCount--;
+              if (braceCount === 0) {
+                endIndex = i;
+                break;
+              }
+            }
+            if (endIndex > startIndex) {
+              return this.cleanJsonString(responseText.substring(startIndex, endIndex + 1));
+            }
+          }
+          return null;
+        }
+      ];
+
+      // Try each strategy
+      for (const strategy of strategies) {
+        try {
+          const jsonText = strategy();
+          if (jsonText) {
+            const parsed = JSON.parse(jsonText);
+            logger.info('Successfully parsed JSON using strategy', { 
+              strategy: strategies.indexOf(strategy) + 1,
+              jsonLength: jsonText.length
+            });
+            return parsed;
+          }
+        } catch (strategyError) {
+          // Continue to next strategy
+          continue;
+        }
       }
+
+      throw new Error('All JSON parsing strategies failed');
+
     } catch (error) {
-      logger.warn('Failed to parse JSON response, using fallback parser');
+      logger.warn('Failed to parse JSON response, using fallback parser', { 
+        error: error.message,
+        responsePreview: responseText.substring(0, 200)
+      });
     }
 
     // Fallback parsing
     return this.fallbackParse(responseText);
+  }
+
+  /**
+   * Clean JSON string to handle common parsing issues
+   */
+  cleanJsonString(jsonText) {
+    try {
+      // Remove code block markers
+      let cleaned = jsonText
+        .replace(/```json\s*/g, '')
+        .replace(/```\s*/g, '')
+        .trim();
+
+      // Try to find the JSON object boundaries more precisely
+      const startIndex = cleaned.indexOf('{');
+      const lastIndex = cleaned.lastIndexOf('}');
+      
+      if (startIndex !== -1 && lastIndex !== -1 && lastIndex > startIndex) {
+        cleaned = cleaned.substring(startIndex, lastIndex + 1);
+      }
+
+      // More aggressive cleaning for common issues
+      cleaned = cleaned
+        // Fix unescaped quotes in string values - more comprehensive
+        .replace(/"([^"]*)"([^"]*)"([^"]*)":/g, '"$1\\"$2\\"$3":')
+        .replace(/: "([^"]*)"([^"]*)"([^"]*)"/g, ': "$1\\"$2\\"$3"')
+        // Fix single quotes that should be escaped
+        .replace(/'/g, "\\'")
+        // Remove trailing commas
+        .replace(/,(\s*[}\]])/g, '$1')
+        // Fix newlines and carriage returns in string values
+        .replace(/"([^"]*)[\r\n]+([^"]*)"/g, '"$1\\n$2"')
+        // Fix other special characters that break JSON
+        .replace(/[\r\n\t]/g, ' ')
+        // Normalize whitespace
+        .replace(/\s+/g, ' ')
+        .trim();
+
+      // Try to validate the JSON structure
+      const testParse = JSON.parse(cleaned);
+      return cleaned;
+      
+    } catch (error) {
+      // If cleaning fails, return a more basic cleanup
+      return jsonText
+        .replace(/```json\s*/g, '')
+        .replace(/```\s*/g, '')
+        .replace(/,(\s*[}\]])/g, '$1')
+        .replace(/\s+/g, ' ')
+        .trim();
+    }
   }
 
   /**
@@ -1480,7 +1608,9 @@ Transcript: ${transcript}`;
   async processFathomUrlOnly(url, analysis, additionalContent = null) {
     try {
       // Initialize service without creating analysis record
-      await this.initialize(analysis._id, analysis.user.userId);
+      // Handle case where user might be null or userId might not exist
+      const userId = analysis.user?.userId || analysis.user?._id || null;
+      await this.initialize(analysis._id, userId);
 
       logger.info('Starting Fathom URL processing for comprehensive analysis', { 
         analysisId: analysis._id, 

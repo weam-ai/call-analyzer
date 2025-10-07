@@ -186,6 +186,12 @@ analysisSchema.index({ userId: 1, createdAt: -1 });
 analysisSchema.index({ serviceType: 1, status: 1 });
 analysisSchema.index({ 'metadata.createdAt': -1 });
 
+// Compound indexes for pagination and filtering
+analysisSchema.index({ 'user.companyId': 1, createdAt: -1 });
+analysisSchema.index({ companyId: 1, createdAt: -1 });
+analysisSchema.index({ 'user.companyId': 1, serviceType: 1, status: 1, createdAt: -1 });
+analysisSchema.index({ companyId: 1, serviceType: 1, status: 1, createdAt: -1 });
+
 // Virtual for total processing time
 analysisSchema.virtual('totalProcessingTime').get(function() {
   if (this.metadata.completedAt && this.metadata.createdAt) {

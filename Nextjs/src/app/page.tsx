@@ -5,8 +5,11 @@ import { Button } from '@/components/ui/button'
 import { ComprehensiveAnalysisWizard } from '@/components/ComprehensiveAnalysisWizard'
 import { ComprehensiveAnalysisResults } from '@/components/ComprehensiveAnalysisResults'
 import { CallHistory } from '@/components/CallHistory'
+import { AuthenticatedWrapper } from '@/components/AuthenticatedWrapper'
+import { AuthorizationMessage } from '@/components/AuthorizationMessage'
 import { Analysis } from '@/types/analysis'
-import { BarChart3, TrendingUp, History, Plus, Home as HomeIcon } from 'lucide-react'
+import { BarChart3, TrendingUp, History, Plus, FileText, ArrowLeft, Search } from 'lucide-react'
+import { redirectToBaseUrl } from '@/utils/urlUtils'
 
 export default function Home() {
   const [currentAnalysis, setCurrentAnalysis] = useState<Analysis | null>(null)
@@ -44,7 +47,8 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
+    <AuthenticatedWrapper>
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
       {/* Header */}
       <header className="bg-white/80 backdrop-blur-sm border-b border-slate-200 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -59,6 +63,15 @@ export default function Home() {
               </div>
             </div>
             <div className="flex items-center space-x-4">
+              <Button
+                onClick={redirectToBaseUrl}
+                variant="outline"
+                size="sm"
+                className="flex items-center gap-2"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                <span className="hidden sm:inline">Back to App</span>
+              </Button>
               <div className="flex items-center gap-2">
                 <Button
                   variant={currentView === 'wizard' ? 'default' : 'outline'}
@@ -66,8 +79,8 @@ export default function Home() {
                   onClick={handleNewAnalysis}
                   className="flex items-center gap-2"
                 >
-                  <HomeIcon className="w-4 h-4" />
-                  <span className="hidden sm:inline">+ New Analysis</span>
+                  <BarChart3 className="w-4 h-4" />
+                  <span className="hidden sm:inline">New Analysis</span>
                 </Button>
                 <Button
                   variant={currentView === 'history' ? 'default' : 'outline'}
@@ -112,6 +125,7 @@ export default function Home() {
         )}
       </main>
 
-    </div>
+      </div>
+    </AuthenticatedWrapper>
   )
 }
