@@ -41,12 +41,17 @@ class PlaywrightService {
       const args = [...baseArgs, ...extraArgs];
 
       // Determine executable path
-      // Priority: 1. Options param, 2. Environment variable, 3. Auto-detect (default)
+      // Priority: 1. Options param, 2. CHROME_PATH (Docker/Alpine), 3. Auto-detect
       const browserExecutablePath = executablePath || 
-                                     process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || 
+                                     process.env.CHROME_PATH || 
                                      null;
 
-      logger.info('Browser executable path', { browserExecutablePath });
+      logger.info('Browser executable path configuration', { 
+        executablePath: browserExecutablePath || 'auto-detect',
+        CHROME_PATH: process.env.CHROME_PATH || 'not set',
+        PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: process.env.PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD || 'not set'
+      });
+
       logger.info('Launching Playwright browser', { 
         identifier, 
         headless, 
