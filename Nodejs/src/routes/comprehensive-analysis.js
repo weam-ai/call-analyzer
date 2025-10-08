@@ -34,11 +34,6 @@ const upload = multer({
     if (allowedMimeTypes.includes(file.mimetype) || allowedExtensions.includes(fileExtension)) {
       cb(null, true);
     } else {
-      console.log('File validation failed:', {
-        filename: file.originalname,
-        mimetype: file.mimetype,
-        extension: fileExtension
-      });
       cb(new Error('Invalid file type. Only .m4a, .mp3, .wav, .pdf, .docx, and .txt files are allowed.'), false);
     }
   }
@@ -89,7 +84,7 @@ function getUserDataFromRequest(req) {
       email = userData.email;
       companyId = userData.companyId;
     } catch (error) {
-      console.error('Error parsing user data from headers:', error);
+      // Silently ignore parsing errors
     }
   }
   
@@ -112,7 +107,7 @@ function getCompanyIdFromRequest(req) {
       const userData = JSON.parse(req.headers['x-user-data']);
       companyId = userData.companyId;
     } catch (error) {
-      console.error('Error parsing user data from headers:', error);
+      // Silently ignore parsing errors
     }
   }
   

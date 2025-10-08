@@ -1,4 +1,4 @@
-const playwright = require('playwright');
+const playwrightService = require('./playwrightService');
 const llmService = require('./llmService');
 const FileUtils = require('../utils/fileUtils');
 const Analysis = require('../models/Analysis');
@@ -7,7 +7,6 @@ const logger = require('../utils/logger');
 class FathomService {
   async processFathomCall(url, userId, additionalContent = null, userData = null) {
     let analysis = null;
-    let browser = null;
 
     try {
       // Create user object from session data
@@ -114,36 +113,22 @@ class FathomService {
       }
 
       throw error;
-    } finally {
-      if (browser) {
-        await browser.close();
-      }
     }
   }
 
   async extractTranscriptFromFathomUrl(url) {
-    let browser = null;
+    let browserInstance = null;
     
     try {
-      // Launch browser with specific settings for Fathom
-      browser = await playwright.chromium.launch({
-        headless: true,
-        args: [
-          '--no-sandbox', 
-          '--disable-setuid-sandbox',
-          '--disable-web-security',
-          '--disable-features=VizDisplayCompositor',
-          '--disable-dev-shm-usage'
-        ]
+      // Launch browser using centralized Fathom-specific service
+      browserInstance = await playwrightService.launchFathomBrowser({
+        identifier: `fathom-${Date.now()}`,
+        contextOptions: {
+          ignoreHTTPSErrors: true
+        }
       });
 
-      const context = await browser.newContext({
-        userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36',
-        viewport: { width: 1920, height: 1080 },
-        ignoreHTTPSErrors: true
-      });
-
-      const page = await context.newPage();
+      const { page } = browserInstance;
 
       // Set up request interception to handle CORS
       await page.route('**/*', (route) => {
@@ -312,8 +297,8 @@ class FathomService {
       logger.error('Failed to extract transcript from Fathom URL:', error);
       throw new Error(`Failed to extract transcript from Fathom URL: ${error.message}`);
     } finally {
-      if (browser) {
-        await browser.close();
+      if (browserInstance) {
+        await playwrightService.closeBrowser(browserInstance.identifier);
       }
     }
   }

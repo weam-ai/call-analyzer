@@ -1,4 +1,4 @@
-const playwright = require('playwright');
+const playwrightService = require('./playwrightService');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const cheerio = require('cheerio');
 const logger = require('../utils/logger');
@@ -8,8 +8,7 @@ const config = require('../config/backend-config');
 
 class EnhancedFathomService {
   constructor() {
-    this.browser = null;
-    this.context = null;
+    this.browserInstance = null;
     this.page = null;
     this.genAI = null;
     this.model = null;
@@ -116,29 +115,16 @@ class EnhancedFathomService {
       try {
         logger.info(`Attempting to extract transcript from Fathom URL (attempt ${retryCount + 1})`, { url });
         
-        // Launch browser
-        this.browser = await playwright.chromium.launch({
-          headless: true,
-          args: [
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage',
-            '--disable-accelerated-2d-canvas',
-            '--no-first-run',
-            '--no-zygote',
-            '--disable-gpu'
-          ]
+        // Launch browser using centralized service
+        this.browserInstance = await playwrightService.launchFathomBrowser({
+          identifier: `enhanced-fathom-${Date.now()}`,
+          contextOptions: {
+            userAgent,
+            ignoreHTTPSErrors: true
+          }
         });
 
-        // Create context
-        this.context = await this.browser.newContext({
-          userAgent,
-          viewport: { width: 1920, height: 1080 },
-          ignoreHTTPSErrors: true
-        });
-
-        // Create page
-        this.page = await this.context.newPage();
+        this.page = this.browserInstance.page;
         
         // Set timeout
         this.page.setDefaultTimeout(pageTimeout);
@@ -788,7 +774,10 @@ Daniel Nyberg: Yeah, sure. So I'm Daniel Nyberg on the VP of marketing at PlayGo
 
       logger.info('Scraping additional content from URL', { url });
 
-      const page = await this.context.newPage();
+      const newBrowserInstance = await playwrightService.launchScrapingBrowser({
+        identifier: `enhanced-scrape-${Date.now()}`
+      });
+      const page = newBrowserInstance.page;
       await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
       await page.waitForTimeout(2000);
 
@@ -802,9 +791,11 @@ Daniel Nyberg: Yeah, sure. So I'm Daniel Nyberg on the VP of marketing at PlayGo
         return mainContent.textContent?.trim() || '';
       });
 
-      // Get page title before closing the page
+      // Get page title before closing the browser
       const pageTitle = await page.title();
-      await page.close();
+      
+      // Close the browser instance
+      await playwrightService.closeBrowser(newBrowserInstance.identifier);
 
       const wordCount = content.split(/\s+/).length;
       logger.info('Additional content scraped successfully', { url, wordCount });
@@ -1691,17 +1682,10 @@ Transcript: ${transcript}`;
    */
   async cleanupBrowser() {
     try {
-      if (this.page) {
-        await this.page.close();
+      if (this.browserInstance) {
+        await playwrightService.closeBrowser(this.browserInstance.identifier);
+        this.browserInstance = null;
         this.page = null;
-      }
-      if (this.context) {
-        await this.context.close();
-        this.context = null;
-      }
-      if (this.browser) {
-        await this.browser.close();
-        this.browser = null;
       }
     } catch (error) {
       logger.warn('Error during browser cleanup:', error.message);

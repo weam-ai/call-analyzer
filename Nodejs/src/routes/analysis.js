@@ -82,13 +82,6 @@ const upload = multer({
       'application/pdf', 'text/plain', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
     ];
     
-    // Debug logging
-    console.log('File upload attempt:', {
-      originalname: file.originalname,
-      mimetype: file.mimetype,
-      fieldname: file.fieldname
-    });
-    
     // Check by file extension as fallback
     const fileExtension = file.originalname.toLowerCase().split('.').pop();
     const allowedExtensions = ['mp3', 'wav', 'm4a', 'aac', 'ogg', 'flac', 'pdf', 'txt', 'doc', 'docx'];
@@ -96,7 +89,6 @@ const upload = multer({
     if (allowedMimes.includes(file.mimetype) || allowedExtensions.includes(fileExtension)) {
       cb(null, true);
     } else {
-      console.log('File rejected:', { mimetype: file.mimetype, extension: fileExtension });
       cb(new Error('Invalid file type. Only audio files and documents are allowed.'), false);
     }
   }

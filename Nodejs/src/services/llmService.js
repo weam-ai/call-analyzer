@@ -382,14 +382,6 @@ ${transcript}
       
       const correctMimeType = getMimeType(audioFile.originalname, audioFile.mimetype);
       
-      console.log('Audio transcription:', {
-        originalName: audioFile.originalname,
-        originalMimeType: audioFile.mimetype,
-        correctedMimeType: correctMimeType,
-        bufferSize: audioFile.buffer ? audioFile.buffer.length : 'No buffer',
-        hasBuffer: !!audioFile.buffer
-      });
-      
       // Check if audio file has content
       if (!audioFile.buffer || audioFile.buffer.length === 0) {
         throw new Error('Audio file is empty or invalid');

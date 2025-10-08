@@ -1,5 +1,5 @@
 const { GoogleGenerativeAI } = require('@google/generative-ai');
-const playwright = require('playwright');
+const playwrightService = require('./playwrightService');
 const multer = require('multer');
 const fs = require('fs').promises;
 const path = require('path');
@@ -496,19 +496,16 @@ By adhering to these guidelines, provide sales teams with actionable insights an
   }
 
   async scrapeWebsiteContent(url, analysis) {
+    let browserInstance = null;
+    
     try {
-      let browser = null;
+      // Launch browser using centralized service
+      browserInstance = await playwrightService.launchScrapingBrowser({
+        identifier: `comprehensive-scrape-${Date.now()}`
+      });
+
+      const { page } = browserInstance;
       
-      browser = await playwright.chromium.launch({
-        headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox']
-      });
-
-      const context = await browser.newContext({
-        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-      });
-
-      const page = await context.newPage();
       await page.goto(url, { waitUntil: 'networkidle' });
       await page.waitForTimeout(2000);
 
@@ -525,8 +522,6 @@ By adhering to these guidelines, provide sales teams with actionable insights an
           url: window.location.href
         };
       });
-
-      await browser.close();
 
       const wordCount = content.text.split(/\s+/).length;
 
@@ -549,6 +544,10 @@ By adhering to these guidelines, provide sales teams with actionable insights an
     } catch (error) {
       logger.error('Website scraping failed:', error);
       throw error;
+    } finally {
+      if (browserInstance) {
+        await playwrightService.closeBrowser(browserInstance.identifier);
+      }
     }
   }
 
