@@ -87,10 +87,9 @@ export function CallHistory({ onAnalysisSelect, onAnalysisDelete, user }: CallHi
         setAllAnalyses(data.data.analyses)
         setTotalPages(data.data.pagination.pages)
         setTotalAnalyses(data.data.pagination.total)
-        console.log('Fetched analyses:', data.data.analyses.length, 'records out of', data.data.pagination.total, 'total')
       }
     } catch (error) {
-      console.error('Failed to fetch analyses:', error)
+      // Error fetching analyses - silently handle
     } finally {
       setLoading(false)
       setIsSearching(false)
@@ -137,7 +136,6 @@ export function CallHistory({ onAnalysisSelect, onAnalysisDelete, user }: CallHi
 
     // Require company ID to delete
     if (!companyId) {
-      console.error('Cannot delete analysis: No company ID available')
       return
     }
 
@@ -155,7 +153,7 @@ export function CallHistory({ onAnalysisSelect, onAnalysisDelete, user }: CallHi
         onAnalysisDelete(analysisId)
       }
     } catch (error) {
-      console.error('Failed to delete analysis:', error)
+      // Error deleting analysis - silently handle
     }
   }
 

@@ -28,7 +28,6 @@ export function HomeClient({ user }: HomeClientProps) {
   }
 
   const handleAnalysisError = (error: string) => {
-    console.error('Analysis error:', error)
     setIsAnalyzing(false)
   }
 

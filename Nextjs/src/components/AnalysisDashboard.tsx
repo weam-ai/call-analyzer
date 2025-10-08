@@ -78,7 +78,7 @@ export function AnalysisDashboard({ onAnalysisSelect, onAnalysisDelete }: Analys
         setStats(data.data.overview)
       }
     } catch (err) {
-      console.error('Failed to fetch stats:', err)
+      // Error fetching stats - silently handle
     }
   }
 
@@ -93,7 +93,7 @@ export function AnalysisDashboard({ onAnalysisSelect, onAnalysisDelete }: Analys
         onAnalysisDelete(analysisId)
       }
     } catch (err) {
-      console.error('Failed to delete analysis:', err)
+      // Error deleting analysis - silently handle
     }
   }
 

@@ -87,10 +87,19 @@ class PlaywrightService {
       // Create a new page
       const page = await context.newPage();
 
+      // Set default timeout for all page operations (30 seconds)
+      // This prevents hanging on slow pages
+      page.setDefaultTimeout(30000);
+      page.setDefaultNavigationTimeout(30000);
+
       // Track this browser instance
       this.activeBrowsers.set(identifier, { browser, context, page });
 
-      logger.info('Browser launched successfully', { identifier });
+      logger.info('Browser launched successfully', { 
+        identifier,
+        defaultTimeout: '30s',
+        navigationTimeout: '30s'
+      });
 
       return { browser, context, page, identifier };
     } catch (error) {
@@ -184,9 +193,9 @@ class PlaywrightService {
    */
   async getPageContent(page, url, options = {}) {
     const {
-      waitUntil = 'networkidle',
-      timeout = 30000,
-      retries = 3
+      waitUntil = 'domcontentloaded', // Changed from 'networkidle' to fail faster
+      timeout = 20000, // Reduced from 30s to 20s
+      retries = 2 // Reduced from 3 to 2
     } = options;
 
     let lastError;

@@ -52,12 +52,6 @@ export function ComprehensiveAnalysisResults({ analysis, onGoHome }: Comprehensi
   const processing = analysis.processing || {}
   const input = analysis.input || {}
   
-  // Debug logging
-  console.log('ComprehensiveAnalysisResults - analysis:', analysis)
-  console.log('ComprehensiveAnalysisResults - results:', results)
-  console.log('ComprehensiveAnalysisResults - processing:', processing)
-  console.log('ComprehensiveAnalysisResults - callDescription:', results.callDescription)
-  
   // Extract metrics from the correct structure
   const callRating = results.callRating || 0
   const opportunities = results.salesOpportunities || {}

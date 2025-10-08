@@ -28,7 +28,6 @@ export async function getSessionData() {
       }
     };
   } catch (error) {
-    console.error('Error getting session data:', error);
     // Return null values on error
     return {
       success: false,

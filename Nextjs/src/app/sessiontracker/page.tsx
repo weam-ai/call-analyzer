@@ -10,7 +10,6 @@ export default async function SessionTrackerPage() {
   const weamCookie = cookieStore.get('weam');
   
   const session = await getSession();
-  console.log('Session Debug:', session.user?.companyId);
   
   const isLoggedIn = !!session.user;
   const user = session.user;

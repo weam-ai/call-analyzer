@@ -78,8 +78,6 @@ export function FathomTranscriptViewer({ analysis }: FathomTranscriptViewerProps
   const parseTranscriptToMessages = (transcript: string): ChatMessage[] => {
     if (!transcript) return []
 
-    console.log('Parsing transcript:', transcript.substring(0, 500) + '...')
-
     // First, try to split by speaker: message pattern (handling both newlines and continuous text)
     const speakerMessagePattern = /([A-Za-z\s]{2,30}):\s*(.+?)(?=\n[A-Za-z\s]{2,30}:|$)/g
     const matches = []
@@ -87,8 +85,6 @@ export function FathomTranscriptViewer({ analysis }: FathomTranscriptViewerProps
     while ((match = speakerMessagePattern.exec(transcript)) !== null) {
       matches.push(match)
     }
-    
-    console.log('Found speaker:message matches:', matches.length)
     
     if (matches.length > 0) {
       const messages: ChatMessage[] = matches.map((match, index) => {
@@ -105,8 +101,6 @@ export function FathomTranscriptViewer({ analysis }: FathomTranscriptViewerProps
         }
       })
       
-      console.log('Parsed messages:', messages.length)
-      
       // Filter out very short or repetitive messages
       const filteredMessages = messages.filter(msg => 
         msg.message.length > 5 && 
@@ -114,8 +108,6 @@ export function FathomTranscriptViewer({ analysis }: FathomTranscriptViewerProps
         !msg.message.match(/^(don't|don't|know|know|know|don't|don't|know|know|know|don't|know|don't|know|Thank|you|Oh|I|saw|two|of|them|so|this|one|I|see|one|I|see|one|see|You|I|think|you're|glad|John)$/i) &&
         !msg.message.match(/^(Sign up|Get your|Sign In|Resume|Auto|Unlimited|Support|This meeting|Regular|Expanded|Full|Summary|Transcript|Ask|General|Chronological|Free|Short|Most|Capture|Sales|Notes|Q&A|Demo|Customer|One-on-One|Project|Candidate|Retrospective|Stand|AI Notetaker|WordPress White|May 20|Copy Transcript|Resume Auto|SCREEN SHARING|Perfect|Let me know|They could allow|do optimization|make a test score|I did run|Peligornet|current is 50|they could make|desktop, 60|every time you run|there would be different|I know I have|The amount of variation|a number of five|So they say|it might be plus|then showed here|So let's say|when you actually|it would be roughly|between that on|and on the desktop|So and you guys|or above 80|That's that's what|like your for mobile|Largest lcp|it was 5.79|It's like 1.7|Okay, cool|I think time|All right Good|I like the transparency|Eric, we have|Yes, good|I will send|or what the e-mail|and you get|Brilliant and then|with the next step|All right sounds|Thank you very|Thank you You're|Bye|We detected an error|Contact Support)$/i)
       )
-      
-      console.log('Filtered messages:', filteredMessages.length)
       return filteredMessages
     }
 
@@ -124,8 +116,6 @@ export function FathomTranscriptViewer({ analysis }: FathomTranscriptViewerProps
     const speakerNames = ['Erik Hjelm', 'Darshan Dagli', 'Daniel Nyberg', 'Unlimited WP Support']
     const manualMessages: ChatMessage[] = []
     let manualMessageId = 0
-    
-    console.log('Trying manual parsing for continuous text')
     
     // Create a more sophisticated regex to find all speaker occurrences
     const allSpeakerPattern = new RegExp(`(${speakerNames.join('|')})`, 'gi')
@@ -137,8 +127,6 @@ export function FathomTranscriptViewer({ analysis }: FathomTranscriptViewerProps
         index: speakerMatch.index
       })
     }
-    
-    console.log('Found speaker occurrences:', speakerMatches.length)
     
     // Sort by index to process in order
     speakerMatches.sort((a, b) => a.index - b.index)
@@ -262,11 +250,6 @@ export function FathomTranscriptViewer({ analysis }: FathomTranscriptViewerProps
   const transcript = analysis.processing?.transcript?.text || ''
   const chatMessages = parseTranscriptToMessages(transcript)
   const results = analysis.results || {}
-  
-  // Debug logging
-  console.log('FathomTranscriptViewer - transcript:', transcript.substring(0, 200) + '...')
-  console.log('FathomTranscriptViewer - chatMessages:', chatMessages.length)
-  console.log('FathomTranscriptViewer - results:', results)
 
 
   const getSentimentColor = (sentiment: string) => {

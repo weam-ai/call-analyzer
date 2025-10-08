@@ -30,7 +30,6 @@ export async function getUserFromSession(): Promise<UserObject | null> {
 
     return user;
   } catch (error) {
-    console.error('Error getting user from session:', error);
     return null;
   }
 }
