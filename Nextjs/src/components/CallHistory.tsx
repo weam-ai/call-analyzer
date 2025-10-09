@@ -32,10 +32,13 @@ import { apiUrl } from '@/config/frontend-config'
 interface CallHistoryProps {
   onAnalysisSelect: (analysis: Analysis) => void
   onAnalysisDelete: (analysisId: string) => void
+  onDeleteClick: (analysisId: string) => void
+  onAnalysisDeleted: (analysisId: string) => void
+  deletedAnalysisId: string | null
   user?: any // User data from session
 }
 
-export function CallHistory({ onAnalysisSelect, onAnalysisDelete, user }: CallHistoryProps) {
+export function CallHistory({ onAnalysisSelect, onAnalysisDelete, onDeleteClick, onAnalysisDeleted, deletedAnalysisId, user }: CallHistoryProps) {
   const [allAnalyses, setAllAnalyses] = useState<Analysis[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
@@ -131,30 +134,31 @@ export function CallHistory({ onAnalysisSelect, onAnalysisDelete, user }: CallHi
     }
   }, [companyId, currentPage, searchDebounce, filterStatus, filterService])
 
-  const handleDelete = async (analysisId: string) => {
-    if (!confirm('Are you sure you want to delete this analysis?')) return
-
-    // Require company ID to delete
-    if (!companyId) {
-      return
-    }
-
-    try {
-      const params = new URLSearchParams({
-        companyId: companyId
-      })
+  // Handle deletion notification from parent component
+  useEffect(() => {
+    if (deletedAnalysisId) {
+      // Remove the deleted analysis from the list
+      setAllAnalyses(prev => prev.filter(a => a._id !== deletedAnalysisId))
       
-      const response = await fetch(`${apiUrl}/comprehensive/${analysisId}?${params}`, {
-        method: 'DELETE'
-      })
+      // Update total count
+      setTotalAnalyses(prev => Math.max(0, prev - 1))
       
-      if (response.ok) {
-        setAllAnalyses(prev => prev.filter(a => a._id !== analysisId))
-        onAnalysisDelete(analysisId)
+      // Recalculate total pages
+      const newTotalPages = Math.ceil(Math.max(0, totalAnalyses - 1) / itemsPerPage)
+      setTotalPages(newTotalPages)
+      
+      // Adjust current page if needed
+      if (currentPage > newTotalPages && newTotalPages > 0) {
+        setCurrentPage(newTotalPages)
       }
-    } catch (error) {
-      // Error deleting analysis - silently handle
+      
+      // Notify parent that we've processed the deletion
+      onAnalysisDeleted(deletedAnalysisId)
     }
+  }, [deletedAnalysisId, totalAnalyses, itemsPerPage, currentPage, onAnalysisDeleted])
+
+  const handleDeleteClick = (analysisId: string) => {
+    onDeleteClick(analysisId)
   }
 
   const handleRefresh = () => {
@@ -462,7 +466,7 @@ export function CallHistory({ onAnalysisSelect, onAnalysisDelete, user }: CallHi
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => handleDelete(analysis._id)}
+                      onClick={() => handleDeleteClick(analysis._id)}
                       className="text-red-600 hover:text-red-700 hover:bg-red-50"
                     >
                       <Trash2 className="w-4 h-4" />
