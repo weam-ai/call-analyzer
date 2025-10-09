@@ -17,11 +17,11 @@ class EnhancedFathomService {
     this.analysis = null;
     this.user = null;
     this.config = {
-      scrollDelay: 2.0,
-      pageTimeout: 60000,
+      scrollDelay: 2.0, // Time to wait after scrolling for content to load
+      pageTimeout: 90000, // 90 seconds - increased to allow more time for slow pages
       userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36',
-      maxRetries: 3,
-      retryDelay: 1000,
+      maxRetries: 3, // Allow up to 3 retries for reliability
+      retryDelay: 1000, // 1 second between retries
       chunkSize: 5,
       maxTokenLimit: 4000
     };

@@ -87,25 +87,36 @@ class PlaywrightService {
       // Create a new page
       const page = await context.newPage();
 
-      // Set default timeout for all page operations (30 seconds)
-      // This prevents hanging on slow pages
-      page.setDefaultTimeout(30000);
-      page.setDefaultNavigationTimeout(30000);
+      // Set default timeout for all page operations (60 seconds)
+      // Increased timeout to prevent premature failures on slow pages
+      page.setDefaultTimeout(60000);
+      page.setDefaultNavigationTimeout(60000);
 
       // Track this browser instance
       this.activeBrowsers.set(identifier, { browser, context, page });
+      
+      logger.info('Browser instance tracked', { 
+        identifier,
+        activeBrowsersCount: this.activeBrowsers.size,
+        allActiveIdentifiers: Array.from(this.activeBrowsers.keys())
+      });
 
       logger.info('Browser launched successfully', { 
         identifier,
-        defaultTimeout: '30s',
-        navigationTimeout: '30s'
+        defaultTimeout: '60s',
+        navigationTimeout: '60s',
+        contextOptions: defaultContextOptions
       });
 
       return { browser, context, page, identifier };
     } catch (error) {
       logger.error('Failed to launch Playwright browser', { 
         error: error.message,
-        identifier 
+        errorName: error.name,
+        errorStack: error.stack,
+        identifier,
+        headless,
+        executablePath: browserExecutablePath || 'auto-detect'
       });
       throw new Error(`Failed to launch browser: ${error.message}`);
     }
@@ -117,6 +128,11 @@ class PlaywrightService {
    * @returns {Promise<{browser: Browser, context: BrowserContext, page: Page}>}
    */
   async launchFathomBrowser(options = {}) {
+    logger.info('Launching Fathom-specific browser', { 
+      hasExtraArgs: !!(options.extraArgs && options.extraArgs.length > 0),
+      identifier: options.identifier || `fathom-${Date.now()}`
+    });
+
     const fathomArgs = [
       '--disable-web-security',
       '--disable-features=VizDisplayCompositor',
@@ -125,6 +141,11 @@ class PlaywrightService {
       '--no-zygote',
       '--disable-gpu'
     ];
+
+    logger.info('Fathom browser args configured', { 
+      fathomArgsCount: fathomArgs.length,
+      fathomArgs 
+    });
 
     return this.launchBrowser({
       ...options,
@@ -139,6 +160,11 @@ class PlaywrightService {
    * @returns {Promise<{browser: Browser, context: BrowserContext, page: Page}>}
    */
   async launchScrapingBrowser(options = {}) {
+    logger.info('Launching scraping browser', { 
+      identifier: options.identifier || `scraping-${Date.now()}`,
+      hasContextOptions: !!(options.contextOptions && Object.keys(options.contextOptions).length > 0)
+    });
+
     return this.launchBrowser({
       ...options,
       identifier: options.identifier || `scraping-${Date.now()}`
@@ -151,20 +177,53 @@ class PlaywrightService {
    * @param {Browser} browser - Browser instance (optional if identifier is provided)
    */
   async closeBrowser(identifier, browser = null) {
+    const startTime = Date.now();
+    
     try {
       if (identifier && this.activeBrowsers.has(identifier)) {
+        logger.info('Closing browser by identifier', { 
+          identifier,
+          activeBrowsersCount: this.activeBrowsers.size 
+        });
+        
         const browserInstance = this.activeBrowsers.get(identifier);
         await browserInstance.browser.close();
         this.activeBrowsers.delete(identifier);
-        logger.info('Browser closed successfully', { identifier });
+        
+        const closeTime = Date.now() - startTime;
+        logger.info('Browser closed successfully', { 
+          identifier,
+          closeTime: `${closeTime}ms`,
+          remainingActiveBrowsers: this.activeBrowsers.size
+        });
       } else if (browser) {
+        logger.info('Closing browser without identifier', { 
+          activeBrowsersCount: this.activeBrowsers.size 
+        });
+        
         await browser.close();
-        logger.info('Browser closed successfully (no identifier)');
+        
+        const closeTime = Date.now() - startTime;
+        logger.info('Browser closed successfully (no identifier)', {
+          closeTime: `${closeTime}ms`
+        });
+      } else {
+        logger.warn('No browser to close', { 
+          identifier,
+          hasIdentifier: !!identifier,
+          hasBrowser: !!browser,
+          activeBrowsersCount: this.activeBrowsers.size
+        });
       }
     } catch (error) {
+      const closeTime = Date.now() - startTime;
       logger.error('Error closing browser', { 
         error: error.message,
-        identifier 
+        errorName: error.name,
+        errorStack: error.stack,
+        identifier,
+        closeTime: `${closeTime}ms`,
+        activeBrowsersCount: this.activeBrowsers.size
       });
       // Don't throw - cleanup should be best effort
     }
@@ -174,12 +233,37 @@ class PlaywrightService {
    * Close all active browser instances
    */
   async closeAllBrowsers() {
+    const startTime = Date.now();
     const identifiers = Array.from(this.activeBrowsers.keys());
-    logger.info(`Closing ${identifiers.length} active browsers`);
+    
+    logger.info('Closing all active browsers', { 
+      activeBrowsersCount: identifiers.length,
+      identifiers 
+    });
 
-    await Promise.allSettled(
+    const results = await Promise.allSettled(
       identifiers.map(identifier => this.closeBrowser(identifier))
     );
+
+    const closeTime = Date.now() - startTime;
+    const successful = results.filter(r => r.status === 'fulfilled').length;
+    const failed = results.filter(r => r.status === 'rejected').length;
+
+    logger.info('All browsers closed', { 
+      totalBrowsers: identifiers.length,
+      successful,
+      failed,
+      closeTime: `${closeTime}ms`
+    });
+
+    if (failed > 0) {
+      logger.warn('Some browsers failed to close', { 
+        failed,
+        failedResults: results
+          .filter(r => r.status === 'rejected')
+          .map(r => r.reason?.message || 'Unknown error')
+      });
+    }
 
     this.activeBrowsers.clear();
   }
@@ -193,44 +277,87 @@ class PlaywrightService {
    */
   async getPageContent(page, url, options = {}) {
     const {
-      waitUntil = 'domcontentloaded', // Changed from 'networkidle' to fail faster
-      timeout = 20000, // Reduced from 30s to 20s
-      retries = 2 // Reduced from 3 to 2
+      waitUntil = 'domcontentloaded',
+      timeout = 45000, // Increased from 20s to 45s
+      retries = 3, // Increased from 2 to 3
+      dynamicContentDelay = 3000 // Increased from 2s to 3s
     } = options;
+
+    logger.info('Starting getPageContent', { 
+      url, 
+      waitUntil, 
+      timeout, 
+      retries,
+      dynamicContentDelay 
+    });
 
     let lastError;
     for (let i = 0; i < retries; i++) {
+      const attemptStartTime = Date.now();
       try {
-        logger.info(`Navigating to URL (attempt ${i + 1}/${retries})`, { url });
+        logger.info(`[Attempt ${i + 1}/${retries}] Navigating to URL`, { 
+          url,
+          timeout: `${timeout}ms`,
+          waitUntil 
+        });
         
         await page.goto(url, { 
           waitUntil, 
           timeout 
         });
 
+        const navigationTime = Date.now() - attemptStartTime;
+        logger.info(`[Attempt ${i + 1}/${retries}] Navigation completed`, { 
+          url,
+          navigationTime: `${navigationTime}ms` 
+        });
+
         // Wait a bit for dynamic content
-        await page.waitForTimeout(2000);
+        logger.info(`[Attempt ${i + 1}/${retries}] Waiting for dynamic content`, { 
+          delay: `${dynamicContentDelay}ms` 
+        });
+        await page.waitForTimeout(dynamicContentDelay);
 
         const content = await page.content();
-        logger.info('Page content retrieved successfully', { 
+        const totalTime = Date.now() - attemptStartTime;
+        
+        logger.info(`[Attempt ${i + 1}/${retries}] Page content retrieved successfully`, { 
           url, 
-          contentLength: content.length 
+          contentLength: content.length,
+          totalTime: `${totalTime}ms`,
+          navigationTime: `${navigationTime}ms`
         });
 
         return content;
       } catch (error) {
         lastError = error;
-        logger.warn(`Failed to get page content (attempt ${i + 1}/${retries})`, {
+        const attemptTime = Date.now() - attemptStartTime;
+        
+        logger.error(`[Attempt ${i + 1}/${retries}] Failed to get page content`, {
           url,
-          error: error.message
+          error: error.message,
+          errorName: error.name,
+          errorStack: error.stack,
+          attemptTime: `${attemptTime}ms`,
+          remainingRetries: retries - i - 1
         });
 
         if (i < retries - 1) {
-          // Wait before retrying
-          await page.waitForTimeout(1000 * (i + 1));
+          const retryDelay = 2000 * (i + 1); // Increased base delay
+          logger.info(`[Attempt ${i + 1}/${retries}] Retrying after delay`, { 
+            retryDelay: `${retryDelay}ms` 
+          });
+          await page.waitForTimeout(retryDelay);
         }
       }
     }
+
+    logger.error('All retry attempts exhausted', {
+      url,
+      totalAttempts: retries,
+      finalError: lastError.message,
+      finalErrorStack: lastError.stack
+    });
 
     throw new Error(`Failed to get page content after ${retries} attempts: ${lastError.message}`);
   }
@@ -243,18 +370,49 @@ class PlaywrightService {
    * @returns {Promise<string|null>} Element content or null
    */
   async waitForElement(page, selector, options = {}) {
-    const { timeout = 10000, extractText = true } = options;
+    const { timeout = 20000, extractText = true } = options; // Increased from 10s to 20s
+
+    const startTime = Date.now();
+    logger.info('Waiting for element', { 
+      selector, 
+      timeout: `${timeout}ms`, 
+      extractText 
+    });
 
     try {
       await page.waitForSelector(selector, { timeout });
+      const waitTime = Date.now() - startTime;
+      
+      logger.info('Element found', { 
+        selector, 
+        waitTime: `${waitTime}ms` 
+      });
       
       if (extractText) {
-        return await page.textContent(selector);
+        const text = await page.textContent(selector);
+        logger.info('Element text content extracted', { 
+          selector, 
+          textLength: text ? text.length : 0,
+          textPreview: text ? text.substring(0, 100) : null
+        });
+        return text;
       }
       
-      return await page.innerHTML(selector);
+      const html = await page.innerHTML(selector);
+      logger.info('Element HTML content extracted', { 
+        selector, 
+        htmlLength: html ? html.length : 0 
+      });
+      return html;
     } catch (error) {
-      logger.warn(`Element not found: ${selector}`, { error: error.message });
+      const waitTime = Date.now() - startTime;
+      logger.warn('Element not found or timeout', { 
+        selector, 
+        error: error.message,
+        errorName: error.name,
+        waitTime: `${waitTime}ms`,
+        timeout: `${timeout}ms`
+      });
       return null;
     }
   }
@@ -266,10 +424,38 @@ class PlaywrightService {
    * @returns {Promise<any>} Script result
    */
   async executeScript(page, script) {
+    const startTime = Date.now();
+    const scriptPreview = typeof script === 'string' 
+      ? script.substring(0, 100) 
+      : script.toString().substring(0, 100);
+    
+    logger.info('Executing script in page context', { 
+      scriptType: typeof script,
+      scriptPreview 
+    });
+
     try {
-      return await page.evaluate(script);
+      const result = await page.evaluate(script);
+      const executionTime = Date.now() - startTime;
+      
+      logger.info('Script executed successfully', { 
+        executionTime: `${executionTime}ms`,
+        resultType: typeof result,
+        resultPreview: result ? JSON.stringify(result).substring(0, 200) : null
+      });
+      
+      return result;
     } catch (error) {
-      logger.error('Failed to execute script', { error: error.message });
+      const executionTime = Date.now() - startTime;
+      
+      logger.error('Failed to execute script', { 
+        error: error.message,
+        errorName: error.name,
+        errorStack: error.stack,
+        executionTime: `${executionTime}ms`,
+        scriptPreview
+      });
+      
       throw error;
     }
   }
