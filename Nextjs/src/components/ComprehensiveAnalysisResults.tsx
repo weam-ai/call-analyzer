@@ -26,7 +26,6 @@ import {
   Home
 } from 'lucide-react'
 import { Analysis } from '@/types/analysis'
-import { FathomTranscriptViewer } from './FathomTranscriptViewer'
 import { formatText, toPlainText } from '@/utils/textFormatter'
 
 interface ComprehensiveAnalysisResultsProps {
@@ -170,127 +169,210 @@ export function ComprehensiveAnalysisResults({ analysis, onGoHome }: Comprehensi
 
         {/* Overview Tab */}
         <TabsContent value="overview" className="space-y-8 mt-8">
-          {/* Fathom Transcript Viewer - Show only for Fathom analyses */}
-          {analysis.serviceType === 'fathom' && processing.transcript?.text && (
-            <FathomTranscriptViewer analysis={analysis} />
-          )}
-
-          {/* Comprehensive Analysis Summary */}
+          {/* Call Analysis Summary */}
           <Card className="bg-gradient-to-r from-purple-50 to-pink-50 border-purple-200 shadow-lg">
             <CardHeader>
               <CardTitle className="flex items-center gap-3 text-2xl">
                 <Brain className="w-6 h-6 text-purple-600" />
-                Comprehensive Analysis Summary
+                Call Analysis Summary
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
-              {/* Call Overview */}
+              {/* Call Description */}
+              {results.callDescription && (
               <div className="bg-white rounded-xl p-6 shadow-sm border border-purple-100">
                 <h3 className="text-lg font-semibold text-slate-900 mb-4 flex items-center gap-2">
-                  <BarChart3 className="w-5 h-5 text-blue-500" />
+                    <FileText className="w-5 h-5 text-blue-500" />
                   Call Overview
                 </h3>
                 <div 
                   className="text-slate-700 leading-relaxed text-base prose prose-slate max-w-none"
                   dangerouslySetInnerHTML={{ 
-                    __html: formatText(analysis.results?.summary || analysis.results?.callDescription || 'No call overview available')
+                      __html: formatText(results.callDescription)
                   }}
                 />
               </div>
+              )}
 
-              {/* Key Insights */}
+              {/* Detailed Analysis - Formatted Sections */}
+              {results.summary && (
               <div className="bg-white rounded-xl p-6 shadow-sm border border-purple-100">
-                <h3 className="text-lg font-semibold text-slate-900 mb-4 flex items-center gap-2">
-                  <Lightbulb className="w-5 h-5 text-yellow-500" />
-                  Key Insights
+                  <h3 className="text-lg font-semibold text-slate-900 mb-6 flex items-center gap-2">
+                    <BarChart3 className="w-5 h-5 text-indigo-500" />
+                    Detailed Call Analysis
                 </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {(analysis.results?.keyInsights || []).map((insight, index) => (
-                    <div key={index} className="flex items-start gap-3 p-4 bg-yellow-50 rounded-lg border border-yellow-200 hover:shadow-md transition-shadow">
-                      <div className="w-8 h-8 bg-yellow-500 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 shadow-sm">
-                        <span className="text-white text-sm font-bold">{index + 1}</span>
-                      </div>
-                      <p className="text-slate-700 text-sm leading-relaxed">{insight}</p>
-                    </div>
-                  ))}
+                  <div className="space-y-6">
+                    {(() => {
+                      // Parse the summary into sections
+                      const summary = results.summary || ''
+                      
+                      // Try to split by ## headers first
+                      let sections = summary.split(/##\s+/).filter(s => s.trim())
+                      
+                      // If we only got 1 section (no ## headers found), try splitting by section titles
+                      if (sections.length <= 1) {
+                        // Look for common section patterns without ## markers
+                        const sectionPattern = /(Opening & Discovery|Solution Presentation|Closing & Next Steps|Overall Assessment)/gi
+                        const matches = summary.match(sectionPattern)
+                        
+                        if (matches && matches.length > 1) {
+                          // Split by section titles
+                          sections = []
+                          const titlePositions: Array<{title: string, pos: number}> = []
+                          
+                          let match
+                          const regex = /(Opening & Discovery|Solution Presentation|Closing & Next Steps|Overall Assessment)/gi
+                          while ((match = regex.exec(summary)) !== null) {
+                            titlePositions.push({ title: match[1], pos: match.index })
+                          }
+                          
+                          titlePositions.forEach((current, idx) => {
+                            const nextPos = titlePositions[idx + 1]?.pos || summary.length
+                            const content = summary.substring(current.pos, nextPos)
+                            sections.push(content)
+                          })
+                        }
+                      }
+                      
+                      // If still no sections, show as single block
+                      if (sections.length === 0) {
+                        sections = [summary]
+                      }
+                      
+                      return sections.map((section, index) => {
+                        // Clean the section first - remove all # symbols
+                        const cleanedSection = section.replace(/#+/g, '').trim()
+                        const lines = cleanedSection.split('\n').filter(line => line.trim())
+                        
+                        // First line is title - clean it thoroughly
+                        const title = lines[0].trim().replace(/\s+/g, ' ')
+                        
+                        // Get content paragraphs (skip first line which is title)
+                        const contentLines = lines.slice(1).filter(line => line.trim())
+                        
+                        // Convert paragraphs to bullet points - split long paragraphs into sentences
+                        const bulletPoints: string[] = []
+                        
+                        // First, try to process each line
+                        contentLines.forEach(line => {
+                          const trimmedLine = line.trim()
+                          if (trimmedLine.length > 0) {
+                            // If line is very long (paragraph), split into sentences
+                            if (trimmedLine.length > 250) {
+                              const sentences = trimmedLine.match(/[^.!?]+[.!?]+/g) || [trimmedLine]
+                              sentences.forEach(sentence => {
+                                const cleaned = sentence.trim()
+                                if (cleaned.length > 10) {
+                                  bulletPoints.push(cleaned)
+                                }
+                              })
+                            } else {
+                              bulletPoints.push(trimmedLine)
+                            }
+                          }
+                        })
+                        
+                        // If still no bullet points, try splitting the entire section content
+                        if (bulletPoints.length === 0 && contentLines.length > 0) {
+                          const fullContent = contentLines.join(' ')
+                          // Split by sentences
+                          const sentences = fullContent.match(/[^.!?]+[.!?]+/g) || [fullContent]
+                          sentences.forEach(sentence => {
+                            const cleaned = sentence.trim()
+                            if (cleaned.length > 10) {
+                              bulletPoints.push(cleaned)
+                            }
+                          })
+                        }
+                        
+                        // If still no bullet points, try splitting by periods and other delimiters
+                        if (bulletPoints.length === 0 && contentLines.length > 0) {
+                          const fullContent = contentLines.join(' ')
+                          // Split by periods, exclamation marks, question marks, and line breaks
+                          const parts = fullContent.split(/[.!?]\s+/).filter(part => part.trim().length > 10)
+                          parts.forEach(part => {
+                            const cleaned = part.trim()
+                            if (cleaned.length > 10) {
+                              bulletPoints.push(cleaned)
+                            }
+                          })
+                        }
+                        
+                        // Last resort: use the raw content as-is
+                        if (bulletPoints.length === 0 && contentLines.length > 0) {
+                          contentLines.forEach(line => {
+                            const trimmed = line.trim()
+                            if (trimmed.length > 0) {
+                              bulletPoints.push(trimmed)
+                            }
+                          })
+                        }
+                        
+                        // If still empty, use the entire section content
+                        if (bulletPoints.length === 0) {
+                          const fullSection = cleanedSection.replace(title, '').trim()
+                          if (fullSection.length > 0) {
+                            bulletPoints.push(fullSection)
+                          }
+                        }
+                        
+                        // Determine section icon and color based on title
+                        let icon = <Activity className="w-5 h-5" />
+                        let colorClass = 'from-blue-50 to-blue-100 border-blue-200'
+                        let iconColor = 'text-blue-600'
+                        let bulletColor = 'bg-blue-500'
+                        
+                        if (title.toLowerCase().includes('opening') || title.toLowerCase().includes('discovery')) {
+                          icon = <Mic className="w-5 h-5" />
+                          colorClass = 'from-green-50 to-green-100 border-green-200'
+                          iconColor = 'text-green-600'
+                          bulletColor = 'bg-green-500'
+                        } else if (title.toLowerCase().includes('solution') || title.toLowerCase().includes('presentation')) {
+                          icon = <Lightbulb className="w-5 h-5" />
+                          colorClass = 'from-yellow-50 to-yellow-100 border-yellow-200'
+                          iconColor = 'text-yellow-600'
+                          bulletColor = 'bg-yellow-500'
+                        } else if (title.toLowerCase().includes('closing') || title.toLowerCase().includes('next steps')) {
+                          icon = <CheckCircle className="w-5 h-5" />
+                          colorClass = 'from-purple-50 to-purple-100 border-purple-200'
+                          iconColor = 'text-purple-600'
+                          bulletColor = 'bg-purple-500'
+                        } else if (title.toLowerCase().includes('assessment') || title.toLowerCase().includes('overall')) {
+                          icon = <Star className="w-5 h-5" />
+                          colorClass = 'from-indigo-50 to-indigo-100 border-indigo-200'
+                          iconColor = 'text-indigo-600'
+                          bulletColor = 'bg-indigo-500'
+                        }
+                        
+                        // Only render if we have bullet points and title is not the section heading itself
+                        if (bulletPoints.length === 0 || title.toLowerCase().includes('detailed call analysis')) {
+                          return null
+                        }
+                        
+                        return (
+                          <div 
+                            key={index} 
+                            className={`bg-gradient-to-r ${colorClass} rounded-lg p-5 border`}
+                          >
+                            <h4 className={`text-base font-bold mb-4 flex items-center gap-2 ${iconColor}`}>
+                              {icon}
+                              {title}
+                            </h4>
+                            <ul className="space-y-3">
+                              {bulletPoints.map((point, idx) => (
+                                <li key={idx} className="flex items-start gap-3">
+                                  <div className={`${bulletColor} rounded-full w-2 h-2 mt-1.5 flex-shrink-0`}></div>
+                                  <p className="text-slate-700 text-sm leading-relaxed flex-1">{point}</p>
+                                </li>
+                              ))}
+                            </ul>
                 </div>
+                        )
+                      })
+                    })()}
               </div>
-
-              {/* Recommendations */}
-              <div className="bg-white rounded-xl p-6 shadow-sm border border-purple-100">
-                <h3 className="text-lg font-semibold text-slate-900 mb-4 flex items-center gap-2">
-                  <Target className="w-5 h-5 text-green-500" />
-                  Recommendations
-                </h3>
-                <div className="space-y-3">
-                  {(analysis.results?.recommendations || []).map((recommendation, index) => (
-                    <div key={index} className="flex items-start gap-3 p-3 bg-green-50 rounded-lg border border-green-200">
-                      <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
-                      <p className="text-slate-700 text-sm">{recommendation}</p>
-                    </div>
-                  ))}
                 </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Detailed Analysis Data */}
-          <Card className="bg-gradient-to-r from-indigo-50 to-purple-50 border-indigo-200 shadow-lg">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-3 text-2xl">
-                <Brain className="w-6 h-6 text-indigo-600" />
-                Complete Analysis Data
-              </CardTitle>
-              <CardDescription className="text-lg">
-                Comprehensive analysis results with all available data points
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {/* Call Description */}
-              <div className="bg-white rounded-xl p-6 shadow-sm border border-indigo-100">
-                <h3 className="text-lg font-semibold text-slate-900 mb-4 flex items-center gap-2">
-                  <FileText className="w-5 h-5 text-indigo-500" />
-                  Call Description
-                </h3>
-                <div 
-                  className="text-slate-700 leading-relaxed text-base prose prose-slate max-w-none"
-                  dangerouslySetInnerHTML={{ 
-                    __html: formatText(analysis.results?.callDescription || 'No call description available')
-                  }}
-                />
-              </div>
-
-              {/* Summary */}
-              <div className="bg-white rounded-xl p-6 shadow-sm border border-indigo-100">
-                <h3 className="text-lg font-semibold text-slate-900 mb-4 flex items-center gap-2">
-                  <BarChart3 className="w-5 h-5 text-indigo-500" />
-                  Summary
-                </h3>
-                <div 
-                  className="text-slate-700 leading-relaxed text-base prose prose-slate max-w-none"
-                  dangerouslySetInnerHTML={{ 
-                    __html: formatText(analysis.results?.summary || 'No summary available')
-                  }}
-                />
-              </div>
-
-              {/* Key Insights with Enhanced Styling */}
-              <div className="bg-white rounded-xl p-6 shadow-sm border border-indigo-100">
-                <h3 className="text-lg font-semibold text-slate-900 mb-4 flex items-center gap-2">
-                  <Lightbulb className="w-5 h-5 text-yellow-500" />
-                  Key Insights
-                </h3>
-                <div className="space-y-4">
-                  {(analysis.results?.keyInsights || []).map((insight, index) => (
-                    <div key={index} className="flex items-start gap-4 p-4 bg-gradient-to-r from-yellow-50 to-amber-50 rounded-lg border border-yellow-200 hover:shadow-md transition-all duration-200">
-                      <div className="w-10 h-10 bg-gradient-to-r from-yellow-500 to-amber-500 rounded-full flex items-center justify-center flex-shrink-0 shadow-sm">
-                        <span className="text-white text-sm font-bold">{index + 1}</span>
-                      </div>
-                      <p className="text-slate-700 text-sm leading-relaxed flex-1">{insight}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
+              )}
             </CardContent>
           </Card>
 
@@ -298,106 +380,151 @@ export function ComprehensiveAnalysisResults({ analysis, onGoHome }: Comprehensi
         </TabsContent>
 
         {/* Demographics Tab */}
-        <TabsContent value="demographics" className="space-y-6">
-          <Card>
+        <TabsContent value="demographics" className="space-y-6 mt-8">
+          <Card className="bg-gradient-to-r from-purple-50 to-pink-50 border-purple-200 shadow-lg">
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Users className="w-5 h-5 text-purple-500" />
+              <CardTitle className="flex items-center gap-3 text-2xl">
+                <Users className="w-6 h-6 text-purple-600" />
                 Prospect Demographics
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-4">
-                  <div className="flex items-center gap-3">
-                    <Users className="w-5 h-5 text-slate-500" />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="bg-white rounded-lg p-4 border border-purple-100 shadow-sm">
+                  <div className="flex items-start gap-3">
+                    <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <Users className="w-5 h-5 text-purple-600" />
+                    </div>
                     <div>
-                      <p className="text-sm font-medium text-slate-700">Team Size</p>
-                      <p className="text-slate-600">{results.prospectDemographics?.teamSize || 'Not specified'}</p>
+                      <p className="text-sm font-semibold text-slate-700">Team Size</p>
+                      <p className="text-slate-900 font-medium mt-1">{results.prospectDemographics?.teamSize || 'Not specified'}</p>
+                    </div>
                     </div>
                   </div>
                   
-                  <div className="flex items-center gap-3">
-                    <BarChart3 className="w-5 h-5 text-slate-500" />
+                <div className="bg-white rounded-lg p-4 border border-purple-100 shadow-sm">
+                  <div className="flex items-start gap-3">
+                    <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <BarChart3 className="w-5 h-5 text-blue-600" />
+                    </div>
                     <div>
-                      <p className="text-sm font-medium text-slate-700">Work Volume</p>
-                      <p className="text-slate-600">{results.prospectDemographics?.workVolume || 'Not specified'}</p>
+                      <p className="text-sm font-semibold text-slate-700">Work Volume</p>
+                      <p className="text-slate-900 font-medium mt-1">{results.prospectDemographics?.workVolume || 'Not specified'}</p>
+                    </div>
                     </div>
                   </div>
                   
-                  <div className="flex items-center gap-3">
-                    <MapPin className="w-5 h-5 text-slate-500" />
+                <div className="bg-white rounded-lg p-4 border border-purple-100 shadow-sm">
+                  <div className="flex items-start gap-3">
+                    <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <MapPin className="w-5 h-5 text-green-600" />
+                    </div>
                     <div>
-                      <p className="text-sm font-medium text-slate-700">Location</p>
-                      <p className="text-slate-600">{results.prospectDemographics?.location || 'Not specified'}</p>
+                      <p className="text-sm font-semibold text-slate-700">Location</p>
+                      <p className="text-slate-900 font-medium mt-1">{results.prospectDemographics?.location || 'Not specified'}</p>
                     </div>
                   </div>
                 </div>
 
-                <div className="space-y-4">
-                  <div className="flex items-center gap-3">
+                <div className="bg-white rounded-lg p-4 border border-purple-100 shadow-sm">
+                  <div className="flex items-start gap-3">
+                    <div className="w-10 h-10 bg-yellow-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <Activity className="w-5 h-5 text-yellow-600" />
+                    </div>
                     <div>
-                      <p className="text-sm font-medium text-slate-700">Previous Experience</p>
-                      <p className="text-slate-600">{results.prospectDemographics?.previousExperience || 'Not specified'}</p>
+                      <p className="text-sm font-semibold text-slate-700">Previous Experience</p>
+                      <p className="text-slate-900 font-medium mt-1">{results.prospectDemographics?.previousExperience || 'Not specified'}</p>
+                    </div>
                     </div>
                   </div>
                   
-                  <div className="flex items-center gap-3">
-                    <TrendingUp className="w-5 h-5 text-slate-500" />
+                <div className="bg-white rounded-lg p-4 border border-purple-100 shadow-sm">
+                  <div className="flex items-start gap-3">
+                    <div className="w-10 h-10 bg-orange-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <TrendingUp className="w-5 h-5 text-orange-600" />
+                    </div>
                     <div>
-                      <p className="text-sm font-medium text-slate-700">Likelihood of Closing</p>
-                      <p className="text-slate-600">{results.prospectDemographics?.likelihoodOfClosing || 'Not specified'}</p>
+                      <p className="text-sm font-semibold text-slate-700">Likelihood of Closing</p>
+                      <p className="text-slate-900 font-medium mt-1">{results.prospectDemographics?.likelihoodOfClosing || 'Not specified'}</p>
+                    </div>
                     </div>
                   </div>
                   
-                  <div className="flex items-center gap-3">
-                    <Globe className="w-5 h-5 text-slate-500" />
-                    <div>
-                      <p className="text-sm font-medium text-slate-700">Website</p>
-                      <p className="text-slate-600">{results.prospectDemographics?.website || 'Not specified'}</p>
+                <div className="bg-white rounded-lg p-4 border border-purple-100 shadow-sm">
+                  <div className="flex items-start gap-3">
+                    <div className="w-10 h-10 bg-indigo-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <Globe className="w-5 h-5 text-indigo-600" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-slate-700">Website</p>
+                      <p className="text-slate-900 font-medium mt-1 truncate">{results.prospectDemographics?.website || 'Not specified'}</p>
                     </div>
                   </div>
                 </div>
               </div>
 
-              <div className="mt-6">
-                <h4 className="text-sm font-medium text-slate-700 mb-2">Business Summary</h4>
-                <div 
-                  className="text-slate-600 bg-slate-50 p-3 rounded-lg prose prose-sm max-w-none"
+              {results.prospectDemographics?.businessSummary && (
+                <div className="mt-6 bg-white rounded-lg p-5 border border-purple-100 shadow-sm">
+                  <h4 className="text-base font-bold text-slate-900 mb-3 flex items-center gap-2">
+                    <FileText className="w-5 h-5 text-purple-600" />
+                    Business Summary
+                  </h4>
+                  <div 
+                    className="text-slate-700 leading-relaxed prose prose-sm max-w-none"
                   dangerouslySetInnerHTML={{ 
-                    __html: formatText(results.prospectDemographics?.businessSummary || 'No business summary available')
+                      __html: formatText(results.prospectDemographics.businessSummary)
                   }}
                 />
               </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
 
         {/* Performance Tab */}
-        <TabsContent value="performance" className="space-y-6">
-          <Card>
+        <TabsContent value="performance" className="space-y-6 mt-8">
+          <Card className="bg-gradient-to-r from-green-50 to-emerald-50 border-green-200 shadow-lg">
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <TrendingUp className="w-5 h-5 text-green-500" />
+              <CardTitle className="flex items-center gap-3 text-2xl">
+                <TrendingUp className="w-6 h-6 text-green-600" />
                 Sales Team Performance
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="p-4 bg-green-50 rounded-lg border border-green-200">
-                    <h4 className="font-semibold text-green-800 mb-2">Responsiveness</h4>
-                    <p className="text-sm text-green-700">{results.salesPerformance?.responsiveness || 'Not specified'}</p>
+                <div className="bg-white rounded-lg p-5 border border-green-100 shadow-sm">
+                  <div className="flex items-start gap-3">
+                    <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <Zap className="w-6 h-6 text-green-600" />
+                    </div>
+                    <div className="flex-1">
+                      <h4 className="font-bold text-green-900 mb-2">Responsiveness</h4>
+                      <p className="text-sm text-slate-700 leading-relaxed">{results.salesPerformance?.responsiveness || 'Not specified'}</p>
+                    </div>
+                  </div>
                   </div>
                   
-                  <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
-                    <h4 className="font-semibold text-blue-800 mb-2">Satisfaction</h4>
-                    <p className="text-sm text-blue-700">{results.salesPerformance?.satisfaction || 'Not specified'}</p>
+                <div className="bg-white rounded-lg p-5 border border-blue-100 shadow-sm">
+                  <div className="flex items-start gap-3">
+                    <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <CheckCircle className="w-6 h-6 text-blue-600" />
+                    </div>
+                    <div className="flex-1">
+                      <h4 className="font-bold text-blue-900 mb-2">Satisfaction</h4>
+                      <p className="text-sm text-slate-700 leading-relaxed">{results.salesPerformance?.satisfaction || 'Not specified'}</p>
+                    </div>
+                  </div>
                   </div>
                   
-                  <div className="p-4 bg-purple-50 rounded-lg border border-purple-200">
-                    <h4 className="font-semibold text-purple-800 mb-2">Engagement</h4>
-                    <p className="text-sm text-purple-700">{results.salesPerformance?.engagement || 'Not specified'}</p>
+                <div className="bg-white rounded-lg p-5 border border-purple-100 shadow-sm">
+                  <div className="flex items-start gap-3">
+                    <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <Users className="w-6 h-6 text-purple-600" />
+                    </div>
+                    <div className="flex-1">
+                      <h4 className="font-bold text-purple-900 mb-2">Engagement</h4>
+                      <p className="text-sm text-slate-700 leading-relaxed">{results.salesPerformance?.engagement || 'Not specified'}</p>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -405,24 +532,30 @@ export function ComprehensiveAnalysisResults({ analysis, onGoHome }: Comprehensi
           </Card>
 
           {/* Recommendations */}
-          <Card>
+          {results.recommendations && results.recommendations.length > 0 && (
+            <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200 shadow-lg">
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <CheckCircle className="w-5 h-5 text-blue-500" />
+                <CardTitle className="flex items-center gap-3 text-2xl">
+                  <Target className="w-6 h-6 text-blue-600" />
                 Recommendations for Improvement
               </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
-                {(results.recommendations || []).map((recommendation, index) => (
-                  <div key={index} className="flex items-start gap-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
-                    <CheckCircle className="w-5 h-5 text-blue-500 flex-shrink-0 mt-0.5" />
-                    <p className="text-sm text-gray-700">{recommendation}</p>
+                  {results.recommendations.map((recommendation, index) => (
+                    <div key={index} className="bg-white rounded-lg p-4 border border-blue-100 shadow-sm">
+                      <div className="flex items-start gap-3">
+                        <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                          <span className="text-blue-600 font-bold text-sm">{index + 1}</span>
+                        </div>
+                        <p className="text-sm text-slate-700 leading-relaxed flex-1">{recommendation}</p>
+                      </div>
                   </div>
                 ))}
               </div>
             </CardContent>
           </Card>
+          )}
         </TabsContent>
 
         {/* Opportunities Tab */}
@@ -539,268 +672,368 @@ export function ComprehensiveAnalysisResults({ analysis, onGoHome }: Comprehensi
         </TabsContent>
 
         {/* Insights Tab */}
-        <TabsContent value="insights" className="space-y-6">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <Card>
+        <TabsContent value="insights" className="space-y-6 mt-8">
+          {/* Key Insights */}
+          {results.keyInsights && results.keyInsights.length > 0 && (
+            <Card className="bg-gradient-to-r from-yellow-50 to-amber-50 border-yellow-200 shadow-lg">
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Lightbulb className="w-5 h-5 text-yellow-500" />
+                <CardTitle className="flex items-center gap-3 text-2xl">
+                  <Lightbulb className="w-6 h-6 text-yellow-600" />
+                  Key Insights
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {results.keyInsights.map((insight, index) => (
+                    <div key={index} className="bg-white rounded-lg p-4 border border-yellow-100 shadow-sm">
+                      <div className="flex items-start gap-3">
+                        <div className="w-10 h-10 bg-gradient-to-r from-yellow-400 to-amber-500 rounded-full flex items-center justify-center flex-shrink-0 shadow-sm">
+                          <span className="text-white font-bold text-sm">{index + 1}</span>
+                        </div>
+                        <p className="text-sm text-slate-700 leading-relaxed flex-1 pt-1">{insight}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Other Notable Findings */}
+          {results.otherNotableFindings && results.otherNotableFindings.length > 0 && (
+            <Card className="bg-gradient-to-r from-orange-50 to-red-50 border-orange-200 shadow-lg">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-3 text-2xl">
+                  <Eye className="w-6 h-6 text-orange-600" />
                   Other Notable Findings
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="space-y-2">
-                  {(results.otherNotableFindings || []).map((finding, index) => (
-                    <div key={index} className="flex items-start gap-2 p-2 bg-yellow-50 rounded border border-yellow-200">
-                      <Lightbulb className="w-4 h-4 text-yellow-500 flex-shrink-0 mt-0.5" />
-                      <p className="text-sm text-gray-700">{finding}</p>
+                <div className="space-y-3">
+                  {results.otherNotableFindings.map((finding, index) => (
+                    <div key={index} className="bg-white rounded-lg p-4 border border-orange-100 shadow-sm">
+                      <div className="flex items-start gap-3">
+                        <AlertTriangle className="w-5 h-5 text-orange-500 flex-shrink-0 mt-0.5" />
+                        <p className="text-sm text-slate-700 leading-relaxed flex-1">{finding}</p>
+                      </div>
                     </div>
                   ))}
-                  {(!results.otherNotableFindings || results.otherNotableFindings.length === 0) && (
-                    <p className="text-slate-500 text-sm">No additional findings</p>
-                  )}
                 </div>
               </CardContent>
             </Card>
+          )}
 
-            <Card>
+          {/* Call Rating Breakdown */}
+          {results.callRatingBreakdown && (
+            <Card className="bg-gradient-to-r from-indigo-50 to-purple-50 border-indigo-200 shadow-lg">
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <BarChart3 className="w-5 h-5 text-indigo-500" />
-                  Analysis Metrics
+                <CardTitle className="flex items-center gap-3 text-2xl">
+                  <BarChart3 className="w-6 h-6 text-indigo-600" />
+                  Call Rating Breakdown
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="space-y-4">
-                  
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+                  {Object.entries(results.callRatingBreakdown).map(([key, value]) => {
+                    const score = typeof value === 'number' ? value : 0
+                    const maxScore = 10
+                    const percentage = (score / maxScore) * 100
+                    const label = key.replace(/([A-Z])/g, ' $1').trim().replace(/^./, str => str.toUpperCase())
+                    
+                    return (
+                      <div key={key} className="bg-white rounded-lg p-4 border border-indigo-100 shadow-sm">
+                        <p className="text-xs font-semibold text-slate-600 mb-2">{label}</p>
+                        <div className="flex items-center gap-3">
+                          <div className="flex-1">
+                            <div className="w-full bg-slate-200 rounded-full h-2">
+                              <div 
+                                className="bg-gradient-to-r from-indigo-500 to-purple-500 h-2 rounded-full transition-all duration-300"
+                                style={{ width: `${percentage}%` }}
+                              />
+                            </div>
+                          </div>
+                          <span className="text-lg font-bold text-indigo-600">{score}</span>
+                        </div>
+                      </div>
+                    )
+                  })}
                 </div>
               </CardContent>
             </Card>
-          </div>
+          )}
         </TabsContent>
 
         {/* Detailed Analysis Tab */}
-        <TabsContent value="detailed" className="space-y-6">
-          {/* Complete Analysis Data */}
-          <Card className="bg-gradient-to-r from-indigo-50 to-purple-50 border-indigo-200">
+        <TabsContent value="detailed" className="space-y-6 mt-8">
+          {/* Call Description */}
+          {results.callDescription && (
+            <Card className="bg-gradient-to-r from-blue-50 to-cyan-50 border-blue-200 shadow-lg">
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Brain className="w-5 h-5 text-indigo-500" />
-                Complete Analysis Data
+                <CardTitle className="flex items-center gap-3 text-2xl">
+                  <FileText className="w-6 h-6 text-blue-600" />
+                  Call Description
               </CardTitle>
-              <CardDescription>
-                Comprehensive analysis results with all available data points
-              </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="space-y-6">
-                {/* Call Description */}
-                <div className="p-4 bg-white rounded-lg border">
-                  <h4 className="font-semibold text-slate-900 mb-2">Call Description</h4>
                   <div 
-                    className="text-slate-700 text-sm prose prose-sm max-w-none"
+                  className="text-slate-700 leading-relaxed text-base prose prose-slate max-w-none"
                     dangerouslySetInnerHTML={{ 
-                      __html: formatText(results.callDescription || 'Not available') 
-                    }}
-                  />
-                </div>
+                    __html: formatText(results.callDescription) 
+                  }}
+                />
+              </CardContent>
+            </Card>
+          )}
 
-                {/* Summary */}
-                <div className="p-4 bg-white rounded-lg border">
-                  <h4 className="font-semibold text-slate-900 mb-2">Summary</h4>
-                  <div 
-                    className="text-slate-700 prose prose-sm max-w-none"
-                    dangerouslySetInnerHTML={{ 
-                      __html: formatText(results.summary || 'No summary available') 
-                    }}
-                  />
-                </div>
-
-                {/* Key Insights */}
-                {results.keyInsights && results.keyInsights.length > 0 && (
-                  <div className="p-4 bg-white rounded-lg border">
-                    <h4 className="font-semibold text-slate-900 mb-3">Key Insights</h4>
-                    <ul className="space-y-2">
-                      {results.keyInsights.map((insight, index) => (
-                        <li key={index} className="flex items-start gap-2">
-                          <Lightbulb className="w-4 h-4 text-yellow-500 mt-0.5 flex-shrink-0" />
-                          <span className="text-slate-700">{insight}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                {/* Recommendations */}
-                {results.recommendations && results.recommendations.length > 0 && (
-                  <div className="p-4 bg-white rounded-lg border">
-                    <h4 className="font-semibold text-slate-900 mb-3">Recommendations</h4>
-                    <ul className="space-y-2">
-                      {results.recommendations.map((recommendation, index) => (
-                        <li key={index} className="flex items-start gap-2">
-                          <Target className="w-4 h-4 text-green-500 mt-0.5 flex-shrink-0" />
-                          <span className="text-slate-700">{recommendation}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                {/* Other Notable Findings */}
-                {results.otherNotableFindings && results.otherNotableFindings.length > 0 && (
-                  <div className="p-4 bg-white rounded-lg border">
-                    <h4 className="font-semibold text-slate-900 mb-3">Other Notable Findings</h4>
-                    <ul className="space-y-2">
-                      {results.otherNotableFindings.map((finding, index) => (
-                        <li key={index} className="flex items-start gap-2">
-                          <AlertTriangle className="w-4 h-4 text-orange-500 mt-0.5 flex-shrink-0" />
-                          <span className="text-slate-700">{finding}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                {/* Sales Performance */}
-                {results.salesPerformance && (
-                  <div className="p-4 bg-white rounded-lg border">
-                    <h4 className="font-semibold text-slate-900 mb-3">Sales Performance</h4>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <div className="p-3 bg-green-50 rounded-lg">
-                        <h5 className="font-medium text-green-900 mb-1">Responsiveness</h5>
-                        <p className="text-green-700 text-sm">{results.salesPerformance.responsiveness || 'Not specified'}</p>
-                      </div>
-                      <div className="p-3 bg-blue-50 rounded-lg">
-                        <h5 className="font-medium text-blue-900 mb-1">Satisfaction</h5>
-                        <p className="text-blue-700 text-sm">{results.salesPerformance.satisfaction || 'Not specified'}</p>
-                      </div>
-                      <div className="p-3 bg-purple-50 rounded-lg">
-                        <h5 className="font-medium text-purple-900 mb-1">Engagement</h5>
-                        <p className="text-purple-700 text-sm">{results.salesPerformance.engagement || 'Not specified'}</p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Prospect Demographics */}
-                {results.prospectDemographics && (
-                  <div className="p-4 bg-white rounded-lg border">
-                    <h4 className="font-semibold text-slate-900 mb-3">Prospect Demographics</h4>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="space-y-3">
-                        <div>
-                          <h5 className="font-medium text-slate-700 mb-1">Team Size</h5>
-                          <p className="text-slate-600 text-sm">{results.prospectDemographics.teamSize || 'Not specified'}</p>
-                        </div>
-                        <div>
-                          <h5 className="font-medium text-slate-700 mb-1">Work Volume</h5>
-                          <p className="text-slate-600 text-sm">{results.prospectDemographics.workVolume || 'Not specified'}</p>
-                        </div>
-                        <div>
-                          <h5 className="font-medium text-slate-700 mb-1">Location</h5>
-                          <p className="text-slate-600 text-sm">{results.prospectDemographics.location || 'Not specified'}</p>
-                        </div>
-                      </div>
-                      <div className="space-y-3">
-                        <div>
-                          <h5 className="font-medium text-slate-700 mb-1">Previous Experience</h5>
-                          <p className="text-slate-600 text-sm">{results.prospectDemographics.previousExperience || 'Not specified'}</p>
-                        </div>
-                        <div>
-                          <h5 className="font-medium text-slate-700 mb-1">Likelihood of Closing</h5>
-                          <p className="text-slate-600 text-sm">{results.prospectDemographics.likelihoodOfClosing || 'Not specified'}</p>
-                        </div>
-                        <div>
-                          <h5 className="font-medium text-slate-700 mb-1">Business Summary</h5>
-                          <div 
-                            className="text-slate-600 text-sm prose prose-sm max-w-none"
-                            dangerouslySetInnerHTML={{ 
-                              __html: formatText(results.prospectDemographics.businessSummary || 'Not specified')
-                            }}
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Sales Opportunities */}
-                {results.salesOpportunities && (
-                  <div className="p-4 bg-white rounded-lg border">
-                    <h4 className="font-semibold text-slate-900 mb-3">Sales Opportunities</h4>
+          {/* Summary with Bullet Points */}
+          {results.summary && (
+            <Card className="bg-gradient-to-r from-indigo-50 to-purple-50 border-indigo-200 shadow-lg">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-3 text-2xl">
+                  <Brain className="w-6 h-6 text-indigo-600" />
+                  Detailed Call Analysis
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-6">
+                  {(() => {
+                    const summary = results.summary || ''
                     
-                    {/* Upselling Opportunities */}
-                    {results.salesOpportunities.upsellingOpportunities && results.salesOpportunities.upsellingOpportunities.length > 0 && (
-                      <div className="mb-4">
-                        <h5 className="font-medium text-slate-700 mb-2">Upselling Opportunities</h5>
-                        <div className="space-y-3">
-                          {results.salesOpportunities.upsellingOpportunities.map((opportunity, index) => (
-                            <div key={index} className="p-3 bg-green-50 rounded-lg border border-green-200">
-                              <h6 className="font-medium text-green-900 mb-2">{opportunity.opportunity}</h6>
-                              <div className="grid grid-cols-3 gap-2 text-sm">
-                                <div>
-                                  <span className="text-green-700 font-medium">Relevance:</span>
-                                  <span className={`ml-1 ${getScoreColor(opportunity.relevance)}`}>
-                                    {opportunity.relevance}/5
-                                  </span>
-                                </div>
-                                <div>
-                                  <span className="text-green-700 font-medium">Likelihood:</span>
-                                  <span className={`ml-1 ${getScoreColor(opportunity.likelihood)}`}>
-                                    {opportunity.likelihood}/5
-                                  </span>
-                                </div>
-                                <div>
-                                  <span className="text-green-700 font-medium">Revenue Impact:</span>
-                                  <span className={`ml-1 ${getScoreColor(opportunity.revenueImpact)}`}>
-                                    {opportunity.revenueImpact}/5
-                                  </span>
-                                </div>
-                              </div>
-                            </div>
-                          ))}
+                    // Try to split by ## headers first
+                    let sections = summary.split(/##\s+/).filter(s => s.trim())
+                    
+                    // If we only got 1 section (no ## headers found), try splitting by section titles
+                    if (sections.length <= 1) {
+                      const sectionPattern = /(Opening & Discovery|Solution Presentation|Closing & Next Steps|Overall Assessment)/gi
+                      const matches = summary.match(sectionPattern)
+                      
+                      if (matches && matches.length > 1) {
+                        sections = []
+                        const titlePositions: Array<{title: string, pos: number}> = []
+                        
+                        let match
+                        const regex = /(Opening & Discovery|Solution Presentation|Closing & Next Steps|Overall Assessment)/gi
+                        while ((match = regex.exec(summary)) !== null) {
+                          titlePositions.push({ title: match[1], pos: match.index })
+                        }
+                        
+                        titlePositions.forEach((current, idx) => {
+                          const nextPos = titlePositions[idx + 1]?.pos || summary.length
+                          const content = summary.substring(current.pos, nextPos)
+                          sections.push(content)
+                        })
+                      }
+                    }
+                    
+                    if (sections.length === 0) {
+                      sections = [summary]
+                    }
+                    
+                    return sections.map((section, index) => {
+                      // Clean the section first - remove all # symbols
+                      const cleanedSection = section.replace(/#+/g, '').trim()
+                      const lines = cleanedSection.split('\n').filter(line => line.trim())
+                      
+                      // First line is title - clean it thoroughly
+                      const title = lines[0].trim().replace(/\s+/g, ' ')
+                      
+                      // Convert paragraphs to bullet points - split long paragraphs into sentences
+                      const bulletPoints: string[] = []
+                      const contentLines = lines.slice(1).filter(line => line.trim())
+                      
+                      // First, try to process each line
+                      contentLines.forEach(line => {
+                        const trimmedLine = line.trim()
+                        if (trimmedLine.length > 0) {
+                          // If line is very long (paragraph), split into sentences
+                          if (trimmedLine.length > 250) {
+                            const sentences = trimmedLine.match(/[^.!?]+[.!?]+/g) || [trimmedLine]
+                            sentences.forEach(sentence => {
+                              const cleaned = sentence.trim()
+                              if (cleaned.length > 10) {
+                                bulletPoints.push(cleaned)
+                              }
+                            })
+                          } else {
+                            bulletPoints.push(trimmedLine)
+                          }
+                        }
+                      })
+                      
+                      // If still no bullet points, try splitting the entire section content
+                      if (bulletPoints.length === 0 && contentLines.length > 0) {
+                        const fullContent = contentLines.join(' ')
+                        // Split by sentences
+                        const sentences = fullContent.match(/[^.!?]+[.!?]+/g) || [fullContent]
+                        sentences.forEach(sentence => {
+                          const cleaned = sentence.trim()
+                          if (cleaned.length > 10) {
+                            bulletPoints.push(cleaned)
+                          }
+                        })
+                      }
+                      
+                      // If still no bullet points, try splitting by periods and other delimiters
+                      if (bulletPoints.length === 0 && contentLines.length > 0) {
+                        const fullContent = contentLines.join(' ')
+                        // Split by periods, exclamation marks, question marks, and line breaks
+                        const parts = fullContent.split(/[.!?]\s+/).filter(part => part.trim().length > 10)
+                        parts.forEach(part => {
+                          const cleaned = part.trim()
+                          if (cleaned.length > 10) {
+                            bulletPoints.push(cleaned)
+                          }
+                        })
+                      }
+                      
+                      // Last resort: use the raw content as-is
+                      if (bulletPoints.length === 0 && contentLines.length > 0) {
+                        contentLines.forEach(line => {
+                          const trimmed = line.trim()
+                          if (trimmed.length > 0) {
+                            bulletPoints.push(trimmed)
+                          }
+                        })
+                      }
+                      
+                      // If still empty, use the entire section content
+                      if (bulletPoints.length === 0) {
+                        const fullSection = cleanedSection.replace(title, '').trim()
+                        if (fullSection.length > 0) {
+                          bulletPoints.push(fullSection)
+                        }
+                      }
+                      
+                      let icon = <Activity className="w-5 h-5" />
+                      let colorClass = 'from-blue-50 to-blue-100 border-blue-200'
+                      let iconColor = 'text-blue-600'
+                      let bulletColor = 'bg-blue-500'
+                      
+                      if (title.toLowerCase().includes('opening') || title.toLowerCase().includes('discovery')) {
+                        icon = <Mic className="w-5 h-5" />
+                        colorClass = 'from-green-50 to-green-100 border-green-200'
+                        iconColor = 'text-green-600'
+                        bulletColor = 'bg-green-500'
+                      } else if (title.toLowerCase().includes('solution') || title.toLowerCase().includes('presentation')) {
+                        icon = <Lightbulb className="w-5 h-5" />
+                        colorClass = 'from-yellow-50 to-yellow-100 border-yellow-200'
+                        iconColor = 'text-yellow-600'
+                        bulletColor = 'bg-yellow-500'
+                      } else if (title.toLowerCase().includes('closing') || title.toLowerCase().includes('next steps')) {
+                        icon = <CheckCircle className="w-5 h-5" />
+                        colorClass = 'from-purple-50 to-purple-100 border-purple-200'
+                        iconColor = 'text-purple-600'
+                        bulletColor = 'bg-purple-500'
+                      } else if (title.toLowerCase().includes('assessment') || title.toLowerCase().includes('overall')) {
+                        icon = <Star className="w-5 h-5" />
+                        colorClass = 'from-indigo-50 to-indigo-100 border-indigo-200'
+                        iconColor = 'text-indigo-600'
+                        bulletColor = 'bg-indigo-500'
+                      }
+                      
+                      // Only render if we have bullet points and title is not the section heading itself
+                      if (bulletPoints.length === 0 || title.toLowerCase().includes('detailed call analysis')) {
+                        return null
+                      }
+                      
+                      return (
+                        <div key={index} className={`bg-gradient-to-r ${colorClass} rounded-lg p-5 border`}>
+                          <h4 className={`text-base font-bold mb-4 flex items-center gap-2 ${iconColor}`}>
+                            {icon}
+                            {title}
+                          </h4>
+                          <ul className="space-y-3">
+                            {bulletPoints.map((point, idx) => (
+                              <li key={idx} className="flex items-start gap-3">
+                                <div className={`${bulletColor} rounded-full w-2 h-2 mt-1.5 flex-shrink-0`}></div>
+                                <p className="text-slate-700 text-sm leading-relaxed flex-1">{point}</p>
+                              </li>
+                            ))}
+                          </ul>
                         </div>
+                      )
+                    })
+                  })()}
                       </div>
-                    )}
+              </CardContent>
+            </Card>
+          )}
 
-                    {/* Cross-selling Opportunities */}
-                    {results.salesOpportunities.crossSellingOpportunities && results.salesOpportunities.crossSellingOpportunities.length > 0 && (
-                      <div>
-                        <h5 className="font-medium text-slate-700 mb-2">Cross-selling Opportunities</h5>
+          {/* Key Insights */}
+          {results.keyInsights && results.keyInsights.length > 0 && (
+            <Card className="bg-gradient-to-r from-yellow-50 to-amber-50 border-yellow-200 shadow-lg">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-3 text-2xl">
+                  <Lightbulb className="w-6 h-6 text-yellow-600" />
+                  Key Insights
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                      <div className="space-y-3">
+                  {results.keyInsights.map((insight, index) => (
+                    <div key={index} className="bg-white rounded-lg p-4 border border-yellow-100 shadow-sm">
+                      <div className="flex items-start gap-3">
+                        <div className="w-8 h-8 bg-gradient-to-r from-yellow-400 to-amber-500 rounded-full flex items-center justify-center flex-shrink-0">
+                          <span className="text-white font-bold text-sm">{index + 1}</span>
+                        </div>
+                        <p className="text-sm text-slate-700 leading-relaxed flex-1 pt-1">{insight}</p>
+                        </div>
+                        </div>
+                  ))}
+                      </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Recommendations */}
+          {results.recommendations && results.recommendations.length > 0 && (
+            <Card className="bg-gradient-to-r from-green-50 to-emerald-50 border-green-200 shadow-lg">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-3 text-2xl">
+                  <Target className="w-6 h-6 text-green-600" />
+                  Recommendations
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
                         <div className="space-y-3">
-                          {results.salesOpportunities.crossSellingOpportunities.map((opportunity, index) => (
-                            <div key={index} className="p-3 bg-blue-50 rounded-lg border border-blue-200">
-                              <h6 className="font-medium text-blue-900 mb-2">{opportunity.opportunity}</h6>
-                              <div className="grid grid-cols-3 gap-2 text-sm">
-                                <div>
-                                  <span className="text-blue-700 font-medium">Relevance:</span>
-                                  <span className={`ml-1 ${getScoreColor(opportunity.relevance)}`}>
-                                    {opportunity.relevance}/5
-                                  </span>
+                  {results.recommendations.map((recommendation, index) => (
+                    <div key={index} className="bg-white rounded-lg p-4 border border-green-100 shadow-sm">
+                      <div className="flex items-start gap-3">
+                        <div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center flex-shrink-0">
+                          <CheckCircle className="w-4 h-4 text-white" />
                                 </div>
-                                <div>
-                                  <span className="text-blue-700 font-medium">Likelihood:</span>
-                                  <span className={`ml-1 ${getScoreColor(opportunity.likelihood)}`}>
-                                    {opportunity.likelihood}/5
-                                  </span>
-                                </div>
-                                <div>
-                                  <span className="text-blue-700 font-medium">Revenue Impact:</span>
-                                  <span className={`ml-1 ${getScoreColor(opportunity.revenueImpact)}`}>
-                                    {opportunity.revenueImpact}/5
-                                  </span>
-                                </div>
+                        <p className="text-sm text-slate-700 leading-relaxed flex-1">{recommendation}</p>
                               </div>
                             </div>
                           ))}
                         </div>
-                      </div>
-                    )}
-                  </div>
-                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Other Notable Findings */}
+          {results.otherNotableFindings && results.otherNotableFindings.length > 0 && (
+            <Card className="bg-gradient-to-r from-orange-50 to-red-50 border-orange-200 shadow-lg">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-3 text-2xl">
+                  <AlertTriangle className="w-6 h-6 text-orange-600" />
+                  Other Notable Findings
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                        <div className="space-y-3">
+                  {results.otherNotableFindings.map((finding, index) => (
+                    <div key={index} className="bg-white rounded-lg p-4 border border-orange-100 shadow-sm">
+                      <div className="flex items-start gap-3">
+                        <AlertTriangle className="w-5 h-5 text-orange-500 flex-shrink-0 mt-0.5" />
+                        <p className="text-sm text-slate-700 leading-relaxed flex-1">{finding}</p>
+                              </div>
+                            </div>
+                          ))}
               </div>
             </CardContent>
           </Card>
+          )}
         </TabsContent>
       </Tabs>
     </div>

@@ -1,10 +1,8 @@
 'use client'
 
-import { useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { 
   MessageSquare, 
   User, 
@@ -16,7 +14,6 @@ import {
   Target,
   AlertCircle,
   CheckCircle,
-  Lightbulb,
   ArrowRight
 } from 'lucide-react'
 import { formatText } from '@/utils/textFormatter'
@@ -72,7 +69,6 @@ interface ChatMessage {
 }
 
 export function FathomTranscriptViewer({ analysis }: FathomTranscriptViewerProps) {
-  const [viewMode, setViewMode] = useState<'summary' | 'analysis'>('summary')
 
   // Parse transcript into chat messages
   const parseTranscriptToMessages = (transcript: string): ChatMessage[] => {
@@ -286,225 +282,63 @@ export function FathomTranscriptViewer({ analysis }: FathomTranscriptViewerProps
         
       </div>
 
-      {/* Tabs */}
-      <Tabs value={viewMode} onValueChange={(value) => setViewMode(value as 'summary' | 'analysis')}>
-        <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="summary" className="flex items-center gap-2">
-            <FileText className="w-4 h-4" />
-            Summary
-          </TabsTrigger>
-          <TabsTrigger value="analysis" className="flex items-center gap-2">
-            <BarChart3 className="w-4 h-4" />
-            Analysis
-          </TabsTrigger>
-        </TabsList>
-
-
-        {/* Summary View */}
-        <TabsContent value="summary" className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Call Overview */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <FileText className="w-5 h-5" />
-                  Call Overview
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <h4 className="font-semibold text-slate-900 mb-2">Summary</h4>
-                  <div 
-                    className="text-slate-600 text-sm leading-relaxed prose prose-sm max-w-none"
-                    dangerouslySetInnerHTML={{ 
-                      __html: formatText(results.summary || 'No summary available') 
-                    }}
-                  />
-                </div>
-                
-                {results.sentiment && (
-                  <div>
-                    <h4 className="font-semibold text-slate-900 mb-2">Sentiment</h4>
-                    <div className="flex items-center gap-2">
-                      <Badge className={getSentimentColor(results.sentiment.overall || 'neutral')}>
-                        {getSentimentIcon(results.sentiment.overall || 'neutral')}
-                        <span className="ml-1 capitalize">{results.sentiment.overall || 'neutral'}</span>
-                      </Badge>
-                      <span className="text-sm text-slate-500">
-                        {(results.sentiment.confidence || 0) * 100}% confidence
-                      </span>
+      {/* Transcript Chat View */}
+      {chatMessages.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <MessageSquare className="w-5 h-5" />
+              Call Transcript
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4 max-h-[600px] overflow-y-auto">
+              {chatMessages.map((message) => (
+                <div
+                  key={message.id}
+                  className={`flex ${message.isSalesRep ? 'justify-end' : 'justify-start'}`}
+                >
+                  <div
+                    className={`max-w-[80%] rounded-lg p-4 ${
+                      message.isSalesRep
+                        ? 'bg-blue-500 text-white'
+                        : 'bg-slate-100 text-slate-900'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <User className="w-4 h-4" />
+                      <span className="font-semibold text-sm">{message.speaker}</span>
                     </div>
+                    <p className="text-sm leading-relaxed">{message.message}</p>
                   </div>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Key Insights */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Lightbulb className="w-5 h-5" />
-                  Key Insights
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {(results.keyInsights || []).map((insight, index) => (
-                    <div key={index} className="flex items-start gap-3">
-                      <div className="w-2 h-2 bg-blue-500 rounded-full mt-2 flex-shrink-0"></div>
-                      <p className="text-sm text-slate-600">{insight}</p>
-                    </div>
-                  ))}
                 </div>
-              </CardContent>
-            </Card>
-
-            {/* Participants */}
-            {results.participants && results.participants.length > 0 && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Users className="w-5 h-5" />
-                    Participants
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-3">
-                    {results.participants.map((participant, index) => (
-                      <div key={index} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
-                        <div>
-                          <p className="font-medium text-slate-900">{participant.name || 'Unknown'}</p>
-                          <p className="text-sm text-slate-600">{participant.role || 'Participant'}</p>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-sm font-medium text-slate-900">
-                            {Math.round((participant.speakingTime || 0) * 100)}%
-                          </p>
-                          <p className="text-xs text-slate-500">speaking time</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+      
+      {/* If no transcript available, show basic info */}
+      {chatMessages.length === 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <FileText className="w-5 h-5" />
+              Transcript Information
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-slate-600 text-sm">
+              {transcript ? 'Transcript available but could not be parsed into messages.' : 'No transcript available for this call.'}
+            </p>
+            {transcript && (
+              <div className="mt-4 p-4 bg-slate-50 rounded-lg max-h-96 overflow-y-auto">
+                <pre className="text-xs text-slate-700 whitespace-pre-wrap">{transcript}</pre>
+              </div>
             )}
-
-            {/* Topics */}
-            {results.topics && results.topics.length > 0 && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Target className="w-5 h-5" />
-                    Topics Discussed
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex flex-wrap gap-2">
-                    {results.topics.map((topic, index) => (
-                      <Badge key={index} variant="outline" className="text-xs">
-                        {topic}
-                      </Badge>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-          </div>
-        </TabsContent>
-
-        {/* Analysis View */}
-        <TabsContent value="analysis" className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Recommendations */}
-            {results.recommendations && results.recommendations.length > 0 && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <TrendingUp className="w-5 h-5" />
-                    Recommendations
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-3">
-                    {results.recommendations.map((recommendation, index) => (
-                      <div key={index} className="flex items-start gap-3 p-3 bg-green-50 rounded-lg border border-green-200">
-                        <ArrowRight className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
-                        <p className="text-sm text-green-800">{recommendation}</p>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Action Items */}
-            {results.actionItems && results.actionItems.length > 0 && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <CheckCircle className="w-5 h-5" />
-                    Action Items
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-3">
-                    {results.actionItems.map((item, index) => (
-                      <div key={index} className="flex items-start gap-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
-                        <div className="w-2 h-2 bg-blue-500 rounded-full mt-2 flex-shrink-0"></div>
-                        <p className="text-sm text-blue-800">{item}</p>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Risk Factors */}
-            {results.riskFactors && results.riskFactors.length > 0 && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <AlertCircle className="w-5 h-5" />
-                    Risk Factors
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-3">
-                    {results.riskFactors.map((risk, index) => (
-                      <div key={index} className="flex items-start gap-3 p-3 bg-red-50 rounded-lg border border-red-200">
-                        <AlertCircle className="w-4 h-4 text-red-600 mt-0.5 flex-shrink-0" />
-                        <p className="text-sm text-red-800">{risk}</p>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Opportunities */}
-            {results.opportunities && results.opportunities.length > 0 && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Target className="w-5 h-5" />
-                    Opportunities
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-3">
-                    {results.opportunities.map((opportunity, index) => (
-                      <div key={index} className="flex items-start gap-3 p-3 bg-purple-50 rounded-lg border border-purple-200">
-                        <Target className="w-4 h-4 text-purple-600 mt-0.5 flex-shrink-0" />
-                        <p className="text-sm text-purple-800">{opportunity}</p>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-          </div>
-        </TabsContent>
-      </Tabs>
+          </CardContent>
+        </Card>
+      )}
     </div>
   )
 }

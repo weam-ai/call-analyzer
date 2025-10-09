@@ -764,6 +764,8 @@ Daniel Nyberg: Yeah, sure. So I'm Daniel Nyberg on the VP of marketing at PlayGo
    * Scrape additional content from URL
    */
   async scrapeAdditionalContent(url) {
+    const startTime = Date.now();
+    
     try {
       if (!url) return '';
 
@@ -772,43 +774,34 @@ Daniel Nyberg: Yeah, sure. So I'm Daniel Nyberg on the VP of marketing at PlayGo
         url = `https://${url}`;
       }
 
-      logger.info('Scraping additional content from URL', { url });
+      logger.info('Scraping additional content from URL using LLM', { url });
 
-      const newBrowserInstance = await playwrightService.launchScrapingBrowser({
-        identifier: `enhanced-scrape-${Date.now()}`
-      });
-      const page = newBrowserInstance.page;
-      await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
-      await page.waitForTimeout(2000);
-
-      const content = await page.evaluate(() => {
-        // Remove script and style elements
-        const scripts = document.querySelectorAll('script, style, nav, header, footer, aside');
-        scripts.forEach(el => el.remove());
-
-        // Get main content
-        const mainContent = document.querySelector('main, article, .content, #content') || document.body;
-        return mainContent.textContent?.trim() || '';
-      });
-
-      // Get page title before closing the browser
-      const pageTitle = await page.title();
+      const llmService = require('./llmService');
+      const result = await llmService.extractTranscriptFromUrl(url);
       
-      // Close the browser instance
-      await playwrightService.closeBrowser(newBrowserInstance.identifier);
-
-      const wordCount = content.split(/\s+/).length;
-      logger.info('Additional content scraped successfully', { url, wordCount });
+      const processingTime = Date.now() - startTime;
+      logger.info('ENHANCED FATHOM SERVICE: URL content extraction successful', {
+        url,
+        contentLength: result.text?.length,
+        wordCount: result.wordCount,
+        processingTime: `${processingTime}ms`
+      });
 
       return {
-        text: content,
+        text: result.text || '',
         url,
-        title: pageTitle,
-        wordCount
+        title: result.title || '',
+        wordCount: result.wordCount || 0
       };
 
     } catch (error) {
-      logger.error('Failed to scrape additional content:', error);
+      const processingTime = Date.now() - startTime;
+      logger.error('Failed to scrape additional content using LLM:', {
+        error: error.message,
+        errorStack: error.stack,
+        url,
+        processingTime: `${processingTime}ms`
+      });
       return '';
     }
   }
@@ -873,9 +866,31 @@ Based on the website content and call transcript, please analyze the call that t
 Provide a detailed evaluation of the call, including demographic details of the prospect, sales team performance metrics, and actionable recommendations for improvement. 
 Include an overall effectiveness score on a scale of 1 to 10 reflecting the quality and success of the sales team's performance.
 Include a breakdown of strengths, weaknesses, and suggestions for enhancing the sales strategy.
-based on the Page Analysis, sales person forgot which product or service he forgot to mention to client in call:
+Based on the Page Analysis, identify which products or services the salesperson forgot to mention to the client during the call.
 
-Note:- Provide only the evaluation without any additional or miscellaneous information.
+**IMPORTANT FORMATTING REQUIREMENTS:**
+1. The callDescription should be a brief 2-3 sentence overview of the call's purpose and participants
+2. The summary should contain the DETAILED call analysis organized into clear sections:
+   - Opening & Discovery
+   - Solution Presentation  
+   - Closing & Next Steps
+   - Overall Assessment
+3. Each section should have 2-4 short, clear paragraphs (each paragraph should be a single line/sentence that can be displayed as a bullet point)
+4. Do NOT duplicate content between callDescription and summary
+5. Do NOT repeat section headers multiple times
+6. Format the summary with clear section breaks using markdown headers (##)
+7. Write concise, scannable content - each point should be a complete thought in 1-2 sentences
+
+**CRITICAL JSON FORMAT EXAMPLE:**
+{
+  "callDescription": "Sales call between Unlimited WP (Anand Soni, Ronik P.) and Positive Medium (Chris Basham) to discuss SEO services partnership. Chris sought better SEO solutions for his web design agency clients.",
+  "summary": "## Opening & Discovery\\n\\nChris introduced Positive Medium, a web design agency operating since 2012, now full-time since 2022.\\n\\nThe team consists of Chris, his wife, their child, with contractors in Nepal and Pakistan.\\n\\nChris expressed dissatisfaction with current SEO provider Alphasio, citing quality issues and constant oversight needs.\\n\\nChris needs comprehensive SEO services (on-page, technical, off-page) with customized strategies for entertainment industry clients.\\n\\n## Solution Presentation\\n\\nUnlimited WP presented their customized SEO approach based on client needs and goals.\\n\\nThey emphasized on-page and technical SEO as foundational before off-page strategies.\\n\\nOffered free SEO audit of Positive Medium's website to demonstrate capabilities.\\n\\nShowcased various services including WordPress support, PPC, and design, though Chris focused on SEO.\\n\\n## Closing & Next Steps\\n\\nChris agreed to SEO audit of Positive Medium's website as a trial.\\n\\nUnlimited WP committed to providing audit results by end of week.\\n\\nFollow-up call scheduled for next Monday to discuss findings.\\n\\nAudit will include keyword research, mapping, on-page assessment, and technical assessment.\\n\\n## Overall Assessment\\n\\nCall successfully established potential partnership foundation.\\n\\nChris clearly articulated needs and pain points with current provider.\\n\\nFree SEO audit offer was strategic to demonstrate value and build trust.\\n\\nLikelihood of closing is moderately high (65%) pending audit outcome.",
+  "callRating": 7,
+  "callRatingBreakdown": {...},
+  "keyInsights": ["String insight 1", "String insight 2"],
+  "recommendations": ["String recommendation 1"],
+  ...
+}
 
 **CRITICAL: You must respond with valid JSON format. All scoring values (relevance, likelihood, revenueImpact) must be NUMERIC values between 1-5, not text like "Medium" or "High".**
 
@@ -962,28 +977,37 @@ Identify potential sales opportunities by:
      * Likelihood of conversion (1-5)
      * Potential revenue impact (1-5)
 ---
-Present the analysis in the following organized format:
-Give Little Description of the Call between both the parties
+**OUTPUT FORMAT:**
+The response must be a single JSON object with the following structure:
 
-#### 1. **Summary**
-- Provide a high-level overview of the call outcome (e.g., tone of call, progress in the sales journey, and overall impression of the interaction).
-#### 2. **Call Rating (1-10) with Detailed Breakdown**
+#### 1. **callDescription** (String)
+- A brief 2-3 sentence overview describing the call between both parties (who participated, what was discussed)
+
+#### 2. **summary** (String) 
+- A detailed analysis of the call outcome organized with clear markdown sections:
+  - ## Opening & Discovery (describe the opening phase)
+  - ## Solution Presentation (describe how solutions were presented)
+  - ## Closing & Next Steps (describe closing and agreed next steps)
+  - ## Overall Assessment (provide overall evaluation)
+- Do NOT repeat these sections elsewhere in the JSON
+
+#### 3. **Call Rating (1-10) with Detailed Breakdown** (callRating field in JSON)
 - Deliver a single numerical score summarizing the overall effectiveness of the call.
 - **MANDATORY: Include detailed scoring breakdown showing how the rating was calculated:**
   - **Engagement Quality (1-10):** How well did the sales rep engage the prospect? Did they ask good questions, listen actively, and maintain interest? (1-3: Poor engagement, 4-6: Basic engagement, 7-8: Good engagement, 9-10: Exceptional engagement)
   - **Responsiveness (1-10):** How effectively did the sales rep address the prospect's questions and concerns? Were answers thorough and helpful? (1-3: Poor responses, 4-6: Basic responses, 7-8: Good responses, 9-10: Exceptional responses)
   - **Discovery Skills (1-10):** How well did the sales rep uncover the prospect's pain points, needs, and decision-making process? (1-3: No discovery, 4-6: Basic discovery, 7-8: Good discovery, 9-10: Thorough discovery)
   - **Value Proposition (1-10):** How clearly and compellingly did the sales rep present the solution and its benefits? (1-3: No clear value, 4-6: Basic value prop, 7-8: Good value prop, 9-10: Compelling value prop)
-  - **Objection Handling (1-10):** How well did the sales rep handle any objections or concerns raised by the prospect? (Use 0 if no objections were raised) (1-3: Poor handling, 4-6: Basic handling, 7-8: Good handling, 9-10: Exceptional handling)
+  - **Objection Handling (1-10):** How well did the sales rep handle objections or address potential concerns? If objections were raised, rate the handling quality. If no objections arose, rate how proactively the rep addressed potential concerns and built trust. (1-3: Poor handling/no proactive addressing, 4-6: Basic handling/some proactive addressing, 7-8: Good handling/proactive addressing, 9-10: Exceptional handling/excellent trust building)
   - **Closing Attempts (1-10):** Did the sales rep attempt to move the conversation forward with next steps, demos, or closing questions? (1-3: No closing attempts, 4-6: Weak attempts, 7-8: Good attempts, 9-10: Strong closing)
   - **Follow-up Planning (1-10):** Was there a clear next step or follow-up planned? (1-3: No follow-up, 4-6: Vague follow-up, 7-8: Clear follow-up, 9-10: Detailed follow-up)
   - **Overall Call Flow (1-10):** How well-structured and professional was the overall conversation? (1-3: Poor flow, 4-6: Basic flow, 7-8: Good flow, 9-10: Excellent flow)
 
 **CRITICAL RATING CALCULATION RULES:**
-1. **ALL scores must be between 1-10 (no null values)**
+1. **ALL scores must be between 1-10 (no null values, no zeros)**
 2. **Calculate the average of all 8 scores**
 3. **Round to the nearest whole number for final rating**
-4. **Use 0 for objectionHandling only if NO objections were raised**
+4. **For objectionHandling: Always provide a score 1-10, even if no direct objections - rate proactive concern addressing**
 5. **Be realistic and varied in scoring - not every call is a 7/10**
 
 **Example Rating Calculation:**
@@ -991,11 +1015,11 @@ Give Little Description of the Call between both the parties
 - Responsiveness: 7/10  
 - Discovery Skills: 6/10
 - Value Proposition: 8/10
-- Objection Handling: 0/10 (no objections raised)
+- Objection Handling: 7/10 (proactively addressed potential concerns, built trust)
 - Closing Attempts: 9/10
 - Follow-up Planning: 8/10
 - Overall Call Flow: 7/10
-- **Average Score: (8+7+6+8+0+9+8+7)/8 = 6.125/10 → Final Rating: 6/10**
+- **Average Score: (8+7+6+8+7+9+8+7)/8 = 7.5/10 → Final Rating: 8/10**
 
 **Another Example (Poor Call):**
 - Engagement Quality: 3/10
@@ -1018,9 +1042,12 @@ Give Little Description of the Call between both the parties
 - Follow-up Planning: 9/10
 - Overall Call Flow: 9/10
 - **Average Score: (9+9+8+9+8+10+9+9)/8 = 8.75/10 → Final Rating: 9/10**
-#### 3. **Recommendations for Improvement**
-- List tailored suggestions to enhance sales tactics, address weaknesses, and build on strengths observed during the call. Ensure recommendations are actionable and specific (e.g., "Streamline responses to frequently asked questions about pricing").
-#### 4. **Key Insights**
+#### 4. **recommendations** (Array of Strings)
+- List tailored suggestions to enhance sales tactics, address weaknesses, and build on strengths observed during the call
+- Ensure recommendations are actionable and specific (e.g., "Streamline responses to frequently asked questions about pricing")
+- Each recommendation should be a separate string in the array
+
+#### 5. **keyInsights** (Array of Strings)
 Provide detailed notes on the following components:
 - **Demographic Information:** Include team size, work volume, location, business website, previous experiences, likelihood of closing, and business summary.
 - **Performance Evaluation:** Highlight aspects of responsiveness, prospect satisfaction, and engagement.
@@ -1029,7 +1056,8 @@ Provide detailed notes on the following components:
 **IMPORTANT: Format keyInsights as an array of strings, not objects.**
 **CORRECT:** "keyInsights": ["Prospect team is growing and needs better workflow management", "Pain points include task alignment and reporting efficiency"]
 **INCORRECT:** "keyInsights": [{"demographicInformation": "..."}, {"performanceEvaluation": "..."}]
-### 5. **Sales Opportunity Analysis**
+
+#### 6. **salesOpportunities** (Object) - Sales Opportunity Analysis
 Provide detailed notes on the following components:
 - **Product/Service Gap:** Identify products or services from the website that weren't discussed during the call.
 - **Upselling/Cross-selling Opportunities:** Highlight potential areas for upselling or cross-selling based on the prospect's needs and the website content.
@@ -1099,9 +1127,31 @@ Based on the website content and call transcript, please analyze the call that t
 Provide a detailed evaluation of the call, including demographic details of the prospect, sales team performance metrics, and actionable recommendations for improvement. 
 Include an overall effectiveness score on a scale of 1 to 10 reflecting the quality and success of the sales team's performance.
 Include a breakdown of strengths, weaknesses, and suggestions for enhancing the sales strategy.
-based on the Page Analysis, sales person forgot which product or service he forgot to mention to client in call:
+Based on the Page Analysis, identify which products or services the salesperson forgot to mention to the client during the call.
 
-Note:- Provide only the evaluation without any additional or miscellaneous information.
+**IMPORTANT FORMATTING REQUIREMENTS:**
+1. The callDescription should be a brief 2-3 sentence overview of the call's purpose and participants
+2. The summary should contain the DETAILED call analysis organized into clear sections:
+   - Opening & Discovery
+   - Solution Presentation  
+   - Closing & Next Steps
+   - Overall Assessment
+3. Each section should have 2-4 short, clear paragraphs (each paragraph should be a single line/sentence that can be displayed as a bullet point)
+4. Do NOT duplicate content between callDescription and summary
+5. Do NOT repeat section headers multiple times
+6. Format the summary with clear section breaks using markdown headers (##)
+7. Write concise, scannable content - each point should be a complete thought in 1-2 sentences
+
+**CRITICAL JSON FORMAT EXAMPLE:**
+{
+  "callDescription": "Sales call between Unlimited WP (Anand Soni, Ronik P.) and Positive Medium (Chris Basham) to discuss SEO services partnership. Chris sought better SEO solutions for his web design agency clients.",
+  "summary": "## Opening & Discovery\\n\\nChris introduced Positive Medium, a web design agency operating since 2012, now full-time since 2022.\\n\\nThe team consists of Chris, his wife, their child, with contractors in Nepal and Pakistan.\\n\\nChris expressed dissatisfaction with current SEO provider Alphasio, citing quality issues and constant oversight needs.\\n\\nChris needs comprehensive SEO services (on-page, technical, off-page) with customized strategies for entertainment industry clients.\\n\\n## Solution Presentation\\n\\nUnlimited WP presented their customized SEO approach based on client needs and goals.\\n\\nThey emphasized on-page and technical SEO as foundational before off-page strategies.\\n\\nOffered free SEO audit of Positive Medium's website to demonstrate capabilities.\\n\\nShowcased various services including WordPress support, PPC, and design, though Chris focused on SEO.\\n\\n## Closing & Next Steps\\n\\nChris agreed to SEO audit of Positive Medium's website as a trial.\\n\\nUnlimited WP committed to providing audit results by end of week.\\n\\nFollow-up call scheduled for next Monday to discuss findings.\\n\\nAudit will include keyword research, mapping, on-page assessment, and technical assessment.\\n\\n## Overall Assessment\\n\\nCall successfully established potential partnership foundation.\\n\\nChris clearly articulated needs and pain points with current provider.\\n\\nFree SEO audit offer was strategic to demonstrate value and build trust.\\n\\nLikelihood of closing is moderately high (65%) pending audit outcome.",
+  "callRating": 7,
+  "callRatingBreakdown": {...},
+  "keyInsights": ["String insight 1", "String insight 2"],
+  "recommendations": ["String recommendation 1"],
+  ...
+}
 
 **CRITICAL: You must respond with valid JSON format. All scoring values (relevance, likelihood, revenueImpact) must be NUMERIC values between 1-5, not text like "Medium" or "High".**
 
@@ -1188,28 +1238,37 @@ Identify potential sales opportunities by:
      * Likelihood of conversion (1-5)
      * Potential revenue impact (1-5)
 ---
-Present the analysis in the following organized format:
-Give Little Description of the Call between both the parties
+**OUTPUT FORMAT:**
+The response must be a single JSON object with the following structure:
 
-#### 1. **Summary**
-- Provide a high-level overview of the call outcome (e.g., tone of call, progress in the sales journey, and overall impression of the interaction).
-#### 2. **Call Rating (1-10) with Detailed Breakdown**
+#### 1. **callDescription** (String)
+- A brief 2-3 sentence overview describing the call between both parties (who participated, what was discussed)
+
+#### 2. **summary** (String) 
+- A detailed analysis of the call outcome organized with clear markdown sections:
+  - ## Opening & Discovery (describe the opening phase)
+  - ## Solution Presentation (describe how solutions were presented)
+  - ## Closing & Next Steps (describe closing and agreed next steps)
+  - ## Overall Assessment (provide overall evaluation)
+- Do NOT repeat these sections elsewhere in the JSON
+
+#### 3. **Call Rating (1-10) with Detailed Breakdown** (callRating field in JSON)
 - Deliver a single numerical score summarizing the overall effectiveness of the call.
 - **MANDATORY: Include detailed scoring breakdown showing how the rating was calculated:**
   - **Engagement Quality (1-10):** How well did the sales rep engage the prospect? Did they ask good questions, listen actively, and maintain interest? (1-3: Poor engagement, 4-6: Basic engagement, 7-8: Good engagement, 9-10: Exceptional engagement)
   - **Responsiveness (1-10):** How effectively did the sales rep address the prospect's questions and concerns? Were answers thorough and helpful? (1-3: Poor responses, 4-6: Basic responses, 7-8: Good responses, 9-10: Exceptional responses)
   - **Discovery Skills (1-10):** How well did the sales rep uncover the prospect's pain points, needs, and decision-making process? (1-3: No discovery, 4-6: Basic discovery, 7-8: Good discovery, 9-10: Thorough discovery)
   - **Value Proposition (1-10):** How clearly and compellingly did the sales rep present the solution and its benefits? (1-3: No clear value, 4-6: Basic value prop, 7-8: Good value prop, 9-10: Compelling value prop)
-  - **Objection Handling (1-10):** How well did the sales rep handle any objections or concerns raised by the prospect? (Use 0 if no objections were raised) (1-3: Poor handling, 4-6: Basic handling, 7-8: Good handling, 9-10: Exceptional handling)
+  - **Objection Handling (1-10):** How well did the sales rep handle objections or address potential concerns? If objections were raised, rate the handling quality. If no objections arose, rate how proactively the rep addressed potential concerns and built trust. (1-3: Poor handling/no proactive addressing, 4-6: Basic handling/some proactive addressing, 7-8: Good handling/proactive addressing, 9-10: Exceptional handling/excellent trust building)
   - **Closing Attempts (1-10):** Did the sales rep attempt to move the conversation forward with next steps, demos, or closing questions? (1-3: No closing attempts, 4-6: Weak attempts, 7-8: Good attempts, 9-10: Strong closing)
   - **Follow-up Planning (1-10):** Was there a clear next step or follow-up planned? (1-3: No follow-up, 4-6: Vague follow-up, 7-8: Clear follow-up, 9-10: Detailed follow-up)
   - **Overall Call Flow (1-10):** How well-structured and professional was the overall conversation? (1-3: Poor flow, 4-6: Basic flow, 7-8: Good flow, 9-10: Excellent flow)
 
 **CRITICAL RATING CALCULATION RULES:**
-1. **ALL scores must be between 1-10 (no null values)**
+1. **ALL scores must be between 1-10 (no null values, no zeros)**
 2. **Calculate the average of all 8 scores**
 3. **Round to the nearest whole number for final rating**
-4. **Use 0 for objectionHandling only if NO objections were raised**
+4. **For objectionHandling: Always provide a score 1-10, even if no direct objections - rate proactive concern addressing**
 5. **Be realistic and varied in scoring - not every call is a 7/10**
 
 **Example Rating Calculation:**
@@ -1217,11 +1276,11 @@ Give Little Description of the Call between both the parties
 - Responsiveness: 7/10  
 - Discovery Skills: 6/10
 - Value Proposition: 8/10
-- Objection Handling: 0/10 (no objections raised)
+- Objection Handling: 7/10 (proactively addressed potential concerns, built trust)
 - Closing Attempts: 9/10
 - Follow-up Planning: 8/10
 - Overall Call Flow: 7/10
-- **Average Score: (8+7+6+8+0+9+8+7)/8 = 6.125/10 → Final Rating: 6/10**
+- **Average Score: (8+7+6+8+7+9+8+7)/8 = 7.5/10 → Final Rating: 8/10**
 
 **Another Example (Poor Call):**
 - Engagement Quality: 3/10
@@ -1244,9 +1303,12 @@ Give Little Description of the Call between both the parties
 - Follow-up Planning: 9/10
 - Overall Call Flow: 9/10
 - **Average Score: (9+9+8+9+8+10+9+9)/8 = 8.75/10 → Final Rating: 9/10**
-#### 3. **Recommendations for Improvement**
-- List tailored suggestions to enhance sales tactics, address weaknesses, and build on strengths observed during the call. Ensure recommendations are actionable and specific (e.g., "Streamline responses to frequently asked questions about pricing").
-#### 4. **Key Insights**
+#### 4. **recommendations** (Array of Strings)
+- List tailored suggestions to enhance sales tactics, address weaknesses, and build on strengths observed during the call
+- Ensure recommendations are actionable and specific (e.g., "Streamline responses to frequently asked questions about pricing")
+- Each recommendation should be a separate string in the array
+
+#### 5. **keyInsights** (Array of Strings)
 Provide detailed notes on the following components:
 - **Demographic Information:** Include team size, work volume, location, business website, previous experiences, likelihood of closing, and business summary.
 - **Performance Evaluation:** Highlight aspects of responsiveness, prospect satisfaction, and engagement.
@@ -1255,7 +1317,8 @@ Provide detailed notes on the following components:
 **IMPORTANT: Format keyInsights as an array of strings, not objects.**
 **CORRECT:** "keyInsights": ["Prospect team is growing and needs better workflow management", "Pain points include task alignment and reporting efficiency"]
 **INCORRECT:** "keyInsights": [{"demographicInformation": "..."}, {"performanceEvaluation": "..."}]
-### 5. **Sales Opportunity Analysis**
+
+#### 6. **salesOpportunities** (Object) - Sales Opportunity Analysis
 Provide detailed notes on the following components:
 - **Product/Service Gap:** Identify products or services from the website that weren't discussed during the call.
 - **Upselling/Cross-selling Opportunities:** Highlight potential areas for upselling or cross-selling based on the prospect's needs and the website content.

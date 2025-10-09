@@ -62,6 +62,16 @@ export interface Analysis {
     callDescription?: string
     summary?: string
     callRating?: number // 1-10 scale
+    callRatingBreakdown?: {
+      engagementQuality?: number
+      responsiveness?: number
+      discoverySkills?: number
+      valueProposition?: number
+      objectionHandling?: number
+      closingAttempts?: number
+      followUpPlanning?: number
+      overallCallFlow?: number
+    }
     
     // Demographic Information
     prospectDemographics?: {
