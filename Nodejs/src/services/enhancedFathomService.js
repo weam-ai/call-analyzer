@@ -1285,23 +1285,38 @@ Transcript: ${transcript}`;
     try {
       // Try multiple strategies to extract and parse JSON
       const strategies = [
-        // Strategy 1: Look for JSON in code blocks
+        // Strategy 1: Look for JSON in markdown code blocks with proper brace matching
         () => {
-          const codeBlockMatch = responseText.match(/```json\s*(\{[\s\S]*?\})\s*```/);
-          if (codeBlockMatch) {
-            return this.cleanJsonString(codeBlockMatch[1]);
+          // Find ```json start marker
+          const jsonStartMatch = responseText.match(/```json\s*/);
+          if (jsonStartMatch) {
+            const jsonStart = jsonStartMatch.index + jsonStartMatch[0].length;
+            const afterJsonStart = responseText.substring(jsonStart);
+            
+            // Find the first opening brace
+            const braceStart = afterJsonStart.indexOf('{');
+            if (braceStart !== -1) {
+              // Count braces to find matching closing brace
+              let braceCount = 0;
+              let endIndex = braceStart;
+              for (let i = braceStart; i < afterJsonStart.length; i++) {
+                if (afterJsonStart[i] === '{') braceCount++;
+                if (afterJsonStart[i] === '}') {
+                  braceCount--;
+                  if (braceCount === 0) {
+                    endIndex = i;
+                    break;
+                  }
+                }
+              }
+              if (endIndex > braceStart && braceCount === 0) {
+                return this.cleanJsonString(afterJsonStart.substring(braceStart, endIndex + 1));
+              }
+            }
           }
           return null;
         },
-        // Strategy 2: Direct JSON extraction
-        () => {
-          const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-          if (jsonMatch) {
-            return this.cleanJsonString(jsonMatch[0]);
-          }
-          return null;
-        },
-        // Strategy 3: Smart brace counting to find proper JSON boundaries
+        // Strategy 2: Smart brace counting to find proper JSON boundaries
         () => {
           const startIndex = responseText.indexOf('{');
           if (startIndex !== -1) {
@@ -1318,6 +1333,14 @@ Transcript: ${transcript}`;
             if (endIndex > startIndex) {
               return this.cleanJsonString(responseText.substring(startIndex, endIndex + 1));
             }
+          }
+          return null;
+        },
+        // Strategy 3: Direct JSON extraction (fallback)
+        () => {
+          const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            return this.cleanJsonString(jsonMatch[0]);
           }
           return null;
         }

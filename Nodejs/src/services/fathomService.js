@@ -7,8 +7,16 @@ const logger = require('../utils/logger');
 class FathomService {
   async processFathomCall(url, userId, additionalContent = null, userData = null) {
     let analysis = null;
+    const processingStartTime = Date.now();
 
     try {
+      logger.info('=== FATHOM SERVICE: Starting Fathom analysis ===', {
+        userId,
+        url,
+        hasAdditionalContent: !!additionalContent,
+        additionalContentType: additionalContent?.type
+      });
+
       // Create user object from session data
       let userObject = null;
       if (userData && (userData.userId || userData.email)) {
@@ -18,11 +26,17 @@ class FathomService {
           userId: userData.userId || null,
           companyId: userData.companyId || null
         };
+        logger.info('FATHOM SERVICE: User data identified', {
+          email: userData.email,
+          userId: userData.userId,
+          companyId: userData.companyId
+        });
       } else {
-        logger.warn('No user data provided in session for fathom service');
+        logger.warn('FATHOM SERVICE: No user data provided in session');
       }
 
       // Create analysis record using user object
+      logger.info('FATHOM SERVICE: Creating analysis record in database');
       analysis = new Analysis({
         user: userObject,
         serviceType: 'fathom',
@@ -32,13 +46,23 @@ class FathomService {
         }
       });
       await analysis.save();
-
-      logger.info('Starting Fathom analysis', { analysisId: analysis._id, url });
-
-      // Step 1: Initialize LLM (already done in llmService)
+      logger.info('FATHOM SERVICE: Analysis record created', { 
+        analysisId: analysis._id,
+        serviceType: 'fathom',
+        url
+      });
 
       // Step 2: Extract transcript data from Fathom URL using Playwright
+      logger.info('FATHOM SERVICE: Starting Playwright-based transcript extraction from Fathom URL', { url });
       const transcriptResult = await this.extractTranscriptFromFathomUrl(url);
+      logger.info('FATHOM SERVICE: Fathom transcript extraction completed', {
+        url,
+        transcriptLength: transcriptResult.text?.length,
+        wordCount: transcriptResult.wordCount,
+        confidence: transcriptResult.confidence,
+        duration: transcriptResult.duration,
+        title: transcriptResult.title
+      });
       
       // Update analysis with transcript
       analysis.processing.transcript = {
@@ -49,25 +73,58 @@ class FathomService {
         wordCount: transcriptResult.wordCount
       };
       await analysis.save();
+      logger.info('FATHOM SERVICE: Transcript saved to analysis record');
 
       // Step 3: Process additional content if provided
       let scrapedContent = '';
       if (additionalContent) {
+        logger.info('FATHOM SERVICE: Additional content detected', {
+          type: additionalContent.type,
+          url: additionalContent.url,
+          fileName: additionalContent.file?.originalname
+        });
+
         if (additionalContent.type === 'url') {
+          logger.info('FATHOM SERVICE: Starting additional URL scraping', {
+            url: additionalContent.url
+          });
           scrapedContent = await this.scrapeAdditionalUrl(additionalContent.url);
+          logger.info('FATHOM SERVICE: Additional URL scraping completed', {
+            url: additionalContent.url,
+            scrapedContentLength: scrapedContent?.text?.length || 0
+          });
         } else if (additionalContent.type === 'document') {
+          logger.info('FATHOM SERVICE: Starting document processing', {
+            fileName: additionalContent.file?.originalname
+          });
           scrapedContent = await this.processDocument(additionalContent.file);
+          logger.info('FATHOM SERVICE: Document processing completed', {
+            fileName: additionalContent.file?.originalname,
+            contentLength: scrapedContent?.text?.length || 0
+          });
         }
+      } else {
+        logger.info('FATHOM SERVICE: No additional content provided');
       }
 
-      // Step 4: Initialize Repository & History (handled by LLM service)
-      // Step 5: Add prompt templates and send to LLM
+      // Step 5: Send to LLM for analysis
+      logger.info('FATHOM SERVICE: Starting LLM analysis of Fathom transcript', {
+        transcriptWordCount: transcriptResult.wordCount,
+        hasAdditionalContent: !!scrapedContent
+      });
       const llmResult = await llmService.analyzeSalesCall(
         transcriptResult.text,
         scrapedContent
       );
+      logger.info('FATHOM SERVICE: LLM analysis completed', {
+        model: llmResult.model,
+        processingTime: llmResult.processingTime,
+        tokensUsed: llmResult.tokenUsage?.total,
+        cost: llmResult.cost
+      });
 
       // Update analysis with LLM results
+      logger.info('FATHOM SERVICE: Updating analysis with LLM results');
       analysis.processing.llmAnalysis = {
         prompt: 'Sales call analysis prompt',
         response: llmResult.response,
@@ -78,29 +135,53 @@ class FathomService {
       };
 
       // Parse LLM response and extract structured data
+      logger.info('FATHOM SERVICE: Parsing LLM response to extract structured data');
       const parsedResults = this.parseLLMResponse(llmResult.response);
       analysis.results = parsedResults;
-
-      // Step 6: Delete temporary files if any
-      // (No temporary files in fathom service)
+      logger.info('FATHOM SERVICE: Structured data extracted successfully', {
+        hasCallRating: !!parsedResults.callRating,
+        hasRecommendations: !!parsedResults.recommendations,
+        recommendationsCount: parsedResults.recommendations?.length || 0,
+        hasKeyInsights: !!parsedResults.keyInsights,
+        insightsCount: parsedResults.keyInsights?.length || 0
+      });
 
       // Step 7: Calculate final cost and update metadata
+      const totalProcessingTime = Date.now() - processingStartTime;
+      logger.info('FATHOM SERVICE: Finalizing analysis', {
+        llmProcessingTime: llmResult.processingTime,
+        totalProcessingTime: totalProcessingTime,
+        cost: llmResult.cost
+      });
+
       analysis.metadata.processingTime = llmResult.processingTime;
       analysis.status = 'completed';
       analysis.metadata.completedAt = new Date();
 
       await analysis.save();
 
-      logger.info('Fathom analysis completed', {
+      logger.info('=== FATHOM SERVICE: Analysis completed successfully ===', {
         analysisId: analysis._id,
-        cost: llmResult.cost,
-        processingTime: llmResult.processingTime
+        url,
+        cost: `$${llmResult.cost?.toFixed(4)}`,
+        llmProcessingTime: `${llmResult.processingTime}ms`,
+        totalProcessingTime: `${totalProcessingTime}ms`,
+        tokensUsed: llmResult.tokenUsage?.total,
+        callRating: parsedResults.callRating,
+        transcriptWordCount: transcriptResult.wordCount
       });
 
       return analysis;
 
     } catch (error) {
-      logger.error('Fathom analysis failed:', error);
+      const totalProcessingTime = Date.now() - processingStartTime;
+      logger.error('=== FATHOM SERVICE: Analysis failed ===', {
+        error: error.message,
+        stack: error.stack,
+        totalProcessingTime: `${totalProcessingTime}ms`,
+        analysisId: analysis?._id,
+        url
+      });
       
       if (analysis) {
         analysis.status = 'failed';
@@ -118,8 +199,11 @@ class FathomService {
 
   async extractTranscriptFromFathomUrl(url) {
     let browserInstance = null;
+    const extractionStartTime = Date.now();
     
     try {
+      logger.info('FATHOM SERVICE: Launching Playwright browser for Fathom URL', { url });
+      
       // Launch browser using centralized Fathom-specific service
       browserInstance = await playwrightService.launchFathomBrowser({
         identifier: `fathom-${Date.now()}`,
@@ -128,9 +212,14 @@ class FathomService {
         }
       });
 
+      logger.info('FATHOM SERVICE: Browser launched successfully', {
+        identifier: browserInstance.identifier
+      });
+
       const { page } = browserInstance;
 
       // Set up request interception to handle CORS
+      logger.info('FATHOM SERVICE: Setting up request interception for CORS handling');
       await page.route('**/*', (route) => {
         const headers = {
           ...route.request().headers(),
@@ -142,13 +231,15 @@ class FathomService {
       });
 
       // Navigate to Fathom URL
-      logger.info('Navigating to Fathom URL:', url);
+      logger.info('FATHOM SERVICE: Navigating to Fathom URL', { url });
       await page.goto(url, { 
         waitUntil: 'networkidle',
         timeout: 30000 
       });
+      logger.info('FATHOM SERVICE: Page loaded successfully');
 
       // Wait for Fathom-specific content to load
+      logger.info('FATHOM SERVICE: Waiting for Fathom content to load (5s)');
       await page.waitForTimeout(5000);
 
       // Try to find and click play button if video is not playing
@@ -269,18 +360,26 @@ class FathomService {
       });
 
       const wordCount = transcript.split(/\s+/).filter(word => word.length > 0).length;
+      const extractionTime = Date.now() - extractionStartTime;
 
-      logger.info('Transcript extracted from Fathom URL', {
+      logger.info('FATHOM SERVICE: Transcript extraction completed', {
         url,
         transcriptLength: transcript.length,
         wordCount,
         title: metadata.title,
-        duration: metadata.duration
+        duration: metadata.duration,
+        extractionTime: `${extractionTime}ms`
       });
 
       if (transcript.length < 50) {
+        logger.error('FATHOM SERVICE: Insufficient transcript content extracted', {
+          url,
+          transcriptLength: transcript.length
+        });
         throw new Error('Unable to extract sufficient transcript content from Fathom URL. The video may not have a transcript available or the page structure has changed.');
       }
+
+      logger.info('FATHOM SERVICE: Transcript validation passed, returning results');
 
       return {
         text: transcript,
@@ -294,11 +393,21 @@ class FathomService {
       };
 
     } catch (error) {
-      logger.error('Failed to extract transcript from Fathom URL:', error);
+      const extractionTime = Date.now() - extractionStartTime;
+      logger.error('FATHOM SERVICE: Failed to extract transcript from Fathom URL', {
+        url,
+        error: error.message,
+        stack: error.stack,
+        extractionTime: `${extractionTime}ms`
+      });
       throw new Error(`Failed to extract transcript from Fathom URL: ${error.message}`);
     } finally {
       if (browserInstance) {
+        logger.info('FATHOM SERVICE: Closing Playwright browser', {
+          identifier: browserInstance.identifier
+        });
         await playwrightService.closeBrowser(browserInstance.identifier);
+        logger.info('FATHOM SERVICE: Browser closed successfully');
       }
     }
   }
