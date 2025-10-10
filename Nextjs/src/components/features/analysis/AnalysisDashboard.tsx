@@ -22,7 +22,7 @@ import {
   Download
 } from 'lucide-react'
 import { Analysis } from '@/types/analysis'
-import { formatText, toPlainText, getAnalysisTitle } from '@/utils/textFormatter'
+import { formatText, toPlainText, getAnalysisTitle } from '@/lib/utils/text-formatters'
 import { apiUrl } from '@/config/frontend-config'
 
 interface AnalysisDashboardProps {

@@ -16,7 +16,7 @@ import {
   CheckCircle,
   ArrowRight
 } from 'lucide-react'
-import { formatText } from '@/utils/textFormatter'
+import { formatText } from '@/lib/utils/text-formatters'
 
 interface FathomTranscriptViewerProps {
   analysis: {

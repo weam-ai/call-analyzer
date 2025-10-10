@@ -2,13 +2,13 @@
 
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
-import { ComprehensiveAnalysisWizard } from '@/components/ComprehensiveAnalysisWizard'
-import { ComprehensiveAnalysisResults } from '@/components/ComprehensiveAnalysisResults'
-import { CallHistory } from '@/components/CallHistory'
-import { DeleteConfirmationModal } from '@/components/DeleteConfirmationModal'
+import { ComprehensiveAnalysisWizard } from '@/components/features/analysis/ComprehensiveAnalysisWizard'
+import { ComprehensiveAnalysisResults } from '@/components/features/analysis/ComprehensiveAnalysisResults'
+import { CallHistory } from '@/components/features/history/CallHistory'
+import { DeleteConfirmationModal } from '@/components/shared/DeleteConfirmationModal'
 import { Analysis } from '@/types/analysis'
 import { BarChart3, History, ArrowLeft } from 'lucide-react'
-import { redirectToBaseUrl } from '@/utils/urlUtils'
+import { redirectToBaseUrl } from '@/lib/utils/url'
 import { apiUrl } from '@/config/frontend-config'
 
 interface HomeClientProps {

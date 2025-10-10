@@ -4,7 +4,7 @@ import { Analysis } from '@/types/analysis'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { formatCost, formatDuration, getStatusColor, getServiceColor } from '@/lib/utils'
+import { formatCost, formatDuration, getStatusColor, getServiceColor } from '@/lib/utils/formatters'
 import { 
   CheckCircle, 
   AlertCircle, 

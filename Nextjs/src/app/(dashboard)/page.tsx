@@ -1,6 +1,6 @@
 import { getSession } from '@/config/withSession'
-import { AuthorizationMessage } from '@/components/AuthorizationMessage'
-import { HomeClient } from '../components/HomeClient'
+import { AuthorizationMessage } from '@/components/features/auth/AuthorizationMessage'
+import { HomeClient } from '@/components/shared/HomeClient'
 
 export default async function Home() {
   // Get session directly on server side like sessiontracker does
@@ -16,3 +16,4 @@ export default async function Home() {
   // Pass user data to client component
   return <HomeClient user={user} />
 }
+

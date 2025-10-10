@@ -3,47 +3,39 @@
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { analysisApi } from '@/lib/api'
+import { Textarea } from '@/components/ui/textarea'
+import { analysisApi } from '@/lib/api/analysis'
 import { Analysis } from '@/types/analysis'
 import { getSessionData } from '@/actions/session'
-import { Link, Loader2, Video } from 'lucide-react'
+import { FileText, Loader2 } from 'lucide-react'
 
-interface FathomAnalysisFormProps {
+interface TranscriptAnalysisFormProps {
   onAnalysisStart: () => void
   onAnalysisComplete: (analysis: Analysis) => void
   onAnalysisError: (error: string) => void
   isAnalyzing: boolean
 }
 
-export function FathomAnalysisForm({
+export function TranscriptAnalysisForm({
   onAnalysisStart,
   onAnalysisComplete,
   onAnalysisError,
   isAnalyzing
-}: FathomAnalysisFormProps) {
-  const [url, setUrl] = useState('')
+}: TranscriptAnalysisFormProps) {
+  const [transcript, setTranscript] = useState('')
   const [additionalUrl, setAdditionalUrl] = useState('')
   const [error, setError] = useState('')
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
-    if (!url) {
-      setError('Please enter a Fathom video URL')
+    if (!transcript.trim()) {
+      setError('Please enter a transcript')
       return
     }
 
-    // Validate Fathom URL
-    if (!url.includes('fathom.video')) {
-      setError('Please enter a valid Fathom video URL (e.g., https://fathom.video/share/...)')
-      return
-    }
-
-    // Basic URL validation
-    try {
-      new URL(url)
-    } catch {
-      setError('Please enter a valid URL')
+    if (transcript.trim().length < 50) {
+      setError('Transcript must be at least 50 characters long')
       return
     }
 
@@ -51,43 +43,45 @@ export function FathomAnalysisForm({
       onAnalysisStart()
       setError('')
 
-      const response = await analysisApi.analyzeFathom({
-        url,
+      const response = await analysisApi.analyzeTranscript({
+        transcript: transcript.trim(),
         additionalUrl: additionalUrl || undefined
       })
       
       if (response.success && response.data) {
         onAnalysisComplete(response.data)
         // Reset form
-        setUrl('')
+        setTranscript('')
         setAdditionalUrl('')
       } else {
         onAnalysisError(response.message || 'Analysis failed')
       }
     } catch (err: any) {
-      onAnalysisError(err.response?.data?.message || 'Failed to analyze Fathom video')
+      onAnalysisError(err.response?.data?.message || 'Failed to analyze transcript')
     }
   }
 
+  const wordCount = transcript.trim().split(/\s+/).filter(word => word.length > 0).length
+
   return (
     <form onSubmit={handleSubmit} className="space-y-8">
-      {/* Fathom URL Input */}
+      {/* Transcript Input */}
       <div className="space-y-3">
-        <label htmlFor="url" className="text-lg font-semibold text-slate-900">
-          Fathom Video URL *
+        <label htmlFor="transcript" className="text-lg font-semibold text-slate-900">
+          Sales Call Transcript *
         </label>
-        <Input
-          id="url"
-          type="url"
-          placeholder="https://fathom.video/share/TBPhmznU9LuTGJS2fXPXzzBoz7vExcjB"
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-          className="h-12 text-lg border-slate-300 focus:border-blue-500 focus:ring-blue-500"
+        <Textarea
+          id="transcript"
+          placeholder="Enter the sales call transcript here...&#10;&#10;Example:&#10;John: Hi Sarah, thanks for taking the time to speak with me today. I wanted to discuss how our solution can help your team...&#10;Sarah: Thanks for reaching out, John. We've been looking at several options..."
+          value={transcript}
+          onChange={(e) => setTranscript(e.target.value)}
+          className="min-h-[300px] text-lg border-slate-300 focus:border-blue-500 focus:ring-blue-500 resize-none"
           required
         />
-        <p className="text-sm text-slate-600">
-          Enter a Fathom video sharing URL to analyze the meeting transcript
-        </p>
+        <div className="flex justify-between text-sm text-slate-600">
+          <span>Minimum 50 characters</span>
+          <span className="font-semibold">{wordCount} words</span>
+        </div>
       </div>
 
       {/* Additional URL */}
@@ -117,32 +111,21 @@ export function FathomAnalysisForm({
       {/* Submit Button */}
       <Button
         type="submit"
-        disabled={!url || isAnalyzing}
-        className="w-full h-14 text-lg font-semibold bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white rounded-xl shadow-lg hover:shadow-xl transition-all duration-200"
+        disabled={!transcript.trim() || transcript.trim().length < 50 || isAnalyzing}
+        className="w-full h-14 text-lg font-semibold bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-700 hover:to-cyan-700 text-white rounded-xl shadow-lg hover:shadow-xl transition-all duration-200"
       >
         {isAnalyzing ? (
           <>
             <Loader2 className="w-5 h-5 mr-3 animate-spin" />
-            Analyzing Fathom Video...
+            Analyzing Transcript...
           </>
         ) : (
           <>
-            <Video className="w-5 h-5 mr-3" />
-            Analyze Fathom Video
+            <FileText className="w-5 h-5 mr-3" />
+            Analyze Transcript
           </>
         )}
       </Button>
-
-      {/* Fathom URL Example */}
-      <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-xl">
-        <h4 className="text-sm font-semibold text-blue-900 mb-2">Example Fathom URL:</h4>
-        <p className="text-sm text-blue-700 font-mono break-all">
-          https://fathom.video/share/TBPhmznU9LuTGJS2fXPXzzBoz7vExcjB
-        </p>
-        <p className="text-xs text-blue-600 mt-2">
-          Copy and paste your Fathom video sharing URL above to get started
-        </p>
-      </div>
     </form>
   )
 }

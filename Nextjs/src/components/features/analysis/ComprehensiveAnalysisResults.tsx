@@ -26,7 +26,7 @@ import {
   Home
 } from 'lucide-react'
 import { Analysis } from '@/types/analysis'
-import { formatText, toPlainText } from '@/utils/textFormatter'
+import { formatText, toPlainText } from '@/lib/utils/text-formatters'
 
 interface ComprehensiveAnalysisResultsProps {
   analysis: Analysis

@@ -25,8 +25,8 @@ import {
   Lightbulb
 } from 'lucide-react'
 import { Analysis } from '@/types/analysis'
-import { formatText, toPlainText, getAnalysisTitle } from '@/utils/textFormatter'
-import { AuthorizationMessage } from './AuthorizationMessage'
+import { formatText, toPlainText, getAnalysisTitle } from '@/lib/utils/text-formatters'
+import { AuthorizationMessage } from '@/components/features/auth/AuthorizationMessage'
 import { apiUrl } from '@/config/frontend-config'
 
 interface CallHistoryProps {
