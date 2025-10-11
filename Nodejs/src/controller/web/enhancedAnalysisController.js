@@ -1,11 +1,8 @@
-const express = require('express');
-const { body, validationResult } = require('express-validator');
-const enhancedFathomService = require('../services/enhancedFathomService');
-const Analysis = require('../models/Analysis');
-const User = require('../models/User');
-const logger = require('../utils/logger');
-
-const router = express.Router();
+const { validationResult } = require('express-validator');
+const enhancedFathomService = require('../../services/enhancedFathomService');
+const Analysis = require('../../models/Analysis');
+const User = require('../../models/User');
+const logger = require('../../utils/logger');
 
 // Helper function to get or create demo user
 async function getDemoUser() {
@@ -29,7 +26,6 @@ async function getDemoUser() {
     throw new Error('Failed to get demo user');
   }
 }
-
 
 // Helper function to get user data from request
 function getUserDataFromRequest(req) {
@@ -64,11 +60,12 @@ function getUserDataFromRequest(req) {
   };
 }
 
-// Enhanced Fathom Service - Advanced transcript extraction and analysis
-router.post('/fathom', [
-  body('url').isURL().withMessage('Valid Fathom URL is required'),
-  body('options').optional().isObject().withMessage('Options must be an object')
-], async (req, res) => {
+/**
+ * @desc    Process enhanced Fathom analysis
+ * @route   POST /call-analyzer-api/enhanced/fathom
+ * @access  Public
+ */
+exports.analyzeFathom = async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -128,10 +125,14 @@ router.post('/fathom', [
       message: error.message || 'Failed to process enhanced Fathom analysis'
     });
   }
-});
+};
 
-// Get enhanced analysis by ID
-router.get('/:id', async (req, res) => {
+/**
+ * @desc    Get enhanced analysis by ID
+ * @route   GET /call-analyzer-api/enhanced/:id
+ * @access  Public
+ */
+exports.getAnalysisById = async (req, res) => {
   try {
     const demoUser = await getDemoUser();
     const analysis = await Analysis.findOne({
@@ -157,10 +158,14 @@ router.get('/:id', async (req, res) => {
       message: 'Failed to fetch enhanced analysis'
     });
   }
-});
+};
 
-// Get all enhanced analyses
-router.get('/', async (req, res) => {
+/**
+ * @desc    Get all enhanced analyses
+ * @route   GET /call-analyzer-api/enhanced
+ * @access  Public
+ */
+exports.getAllAnalyses = async (req, res) => {
   try {
     const { page = 1, limit = 10, serviceType = 'fathom' } = req.query;
     
@@ -196,10 +201,14 @@ router.get('/', async (req, res) => {
       message: 'Failed to fetch enhanced analyses'
     });
   }
-});
+};
 
-// Delete enhanced analysis
-router.delete('/:id', async (req, res) => {
+/**
+ * @desc    Delete enhanced analysis
+ * @route   DELETE /call-analyzer-api/enhanced/:id
+ * @access  Public
+ */
+exports.deleteAnalysis = async (req, res) => {
   try {
     const demoUser = await getDemoUser();
     const analysis = await Analysis.findOneAndDelete({
@@ -225,10 +234,14 @@ router.delete('/:id', async (req, res) => {
       message: 'Failed to delete enhanced analysis'
     });
   }
-});
+};
 
-// Get enhanced analysis statistics
-router.get('/stats/overview', async (req, res) => {
+/**
+ * @desc    Get enhanced analysis statistics
+ * @route   GET /call-analyzer-api/enhanced/stats/overview
+ * @access  Public
+ */
+exports.getStatistics = async (req, res) => {
   try {
     const demoUser = await getDemoUser();
     const userId = demoUser._id;
@@ -281,8 +294,5 @@ router.get('/stats/overview', async (req, res) => {
       message: 'Failed to fetch enhanced statistics'
     });
   }
-});
-
-module.exports = router;
-
+};
 

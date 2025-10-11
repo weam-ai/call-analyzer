@@ -1,35 +1,29 @@
-const express = require('express');
 const mongoose = require('mongoose');
 const config = require('../config/backend-config');
 const logger = require('../utils/logger');
 
-const router = express.Router();
-
 /**
- * Health check endpoint
- * GET /api/health
+ * @desc    Basic health check endpoint
+ * @route   GET /call-analyzer-api/health
+ * @access  Public
  */
-router.get('/', async (req, res) => {
+exports.healthCheck = async (req, res) => {
   const healthCheck = {
-    status: 'ok',
+    success: true,
+    message: 'Call Analyzer API is running',
     timestamp: new Date().toISOString(),
+    version: '1.0.0',
+    service: 'call-analyzer-api',
+    status: 'healthy',
     uptime: process.uptime(),
     environment: config.environment,
-    version: process.env.npm_package_version || '1.0.0',
     services: {
       database: 'unknown',
-      gemini: 'unknown',
       server: 'ok'
     },
     memory: {
       used: Math.round(process.memoryUsage().heapUsed / 1024 / 1024) + ' MB',
-      total: Math.round(process.memoryUsage().heapTotal / 1024 / 1024) + ' MB',
-      external: Math.round(process.memoryUsage().external / 1024 / 1024) + ' MB'
-    },
-    system: {
-      platform: process.platform,
-      nodeVersion: process.version,
-      pid: process.pid
+      total: Math.round(process.memoryUsage().heapTotal / 1024 / 1024) + ' MB'
     }
   };
 
@@ -43,47 +37,40 @@ router.get('/', async (req, res) => {
       healthCheck.services.database = 'disconnected';
     }
 
-    // Check Gemini API key availability
-    if (config.geminiApiKey && config.geminiApiKey.trim() !== '') {
-      healthCheck.services.gemini = 'configured';
-    } else {
-      healthCheck.services.gemini = 'not_configured';
-    }
-
     // Determine overall status
-    const criticalServices = ['database', 'server'];
-    const hasCriticalIssues = criticalServices.some(service => 
-      healthCheck.services[service] !== 'connected' && healthCheck.services[service] !== 'ok'
-    );
-
-    if (hasCriticalIssues) {
+    if (healthCheck.services.database !== 'connected') {
       healthCheck.status = 'degraded';
+      healthCheck.success = false;
       res.status(503);
     }
 
-    logger.info('Health check requested', {
+    logger.info('Call Analyzer API health check requested', {
       status: healthCheck.status,
-      database: healthCheck.services.database,
-      gemini: healthCheck.services.gemini
+      database: healthCheck.services.database
     });
 
     res.json(healthCheck);
 
   } catch (error) {
-    logger.error('Health check failed:', error);
+    logger.error('Call Analyzer API health check failed:', error);
     
-    healthCheck.status = 'error';
-    healthCheck.error = error.message;
-    
-    res.status(500).json(healthCheck);
+    res.status(500).json({
+      success: false,
+      message: 'Call Analyzer API health check failed',
+      timestamp: new Date().toISOString(),
+      service: 'call-analyzer-api',
+      status: 'error',
+      error: error.message
+    });
   }
-});
+};
 
 /**
- * Detailed health check endpoint
- * GET /api/health/detailed
+ * @desc    Detailed health check endpoint
+ * @route   GET /api/health/detailed
+ * @access  Public
  */
-router.get('/detailed', async (req, res) => {
+exports.detailedHealthCheck = async (req, res) => {
   const detailedHealthCheck = {
     status: 'ok',
     timestamp: new Date().toISOString(),
@@ -180,13 +167,14 @@ router.get('/detailed', async (req, res) => {
     
     res.status(500).json(detailedHealthCheck);
   }
-});
+};
 
 /**
- * Readiness probe endpoint
- * GET /api/health/ready
+ * @desc    Readiness probe endpoint
+ * @route   GET /api/health/ready
+ * @access  Public
  */
-router.get('/ready', async (req, res) => {
+exports.readinessCheck = async (req, res) => {
   try {
     // Check if critical services are ready
     const isDatabaseReady = mongoose.connection.readyState === 1;
@@ -219,19 +207,19 @@ router.get('/ready', async (req, res) => {
       error: error.message
     });
   }
-});
+};
 
 /**
- * Liveness probe endpoint
- * GET /api/health/live
+ * @desc    Liveness probe endpoint
+ * @route   GET /api/health/live
+ * @access  Public
  */
-router.get('/live', (req, res) => {
+exports.livenessCheck = (req, res) => {
   res.status(200).json({
     status: 'alive',
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
     pid: process.pid
   });
-});
+};
 
-module.exports = router;

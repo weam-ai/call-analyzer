@@ -1,43 +1,8 @@
-const express = require('express');
-const multer = require('multer');
-const { body, validationResult } = require('express-validator');
-const comprehensiveAnalysisService = require('../services/comprehensiveAnalysisService');
-const Analysis = require('../models/Analysis');
-const User = require('../models/User');
-const logger = require('../utils/logger');
-
-const router = express.Router();
-
-// Configure multer for file uploads
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: {
-    fileSize: 50 * 1024 * 1024, // 50 MB
-  },
-  fileFilter: (req, file, cb) => {
-    const allowedMimeTypes = [
-      'audio/m4a',
-      'audio/mp4',
-      'audio/x-m4a',
-      'audio/mpeg',
-      'audio/wav',
-      'application/pdf',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      'application/msword',
-      'text/plain'
-    ];
-    
-    // Also check file extension as fallback
-    const allowedExtensions = ['.m4a', '.mp4', '.mp3', '.wav', '.pdf', '.docx', '.doc', '.txt'];
-    const fileExtension = file.originalname.toLowerCase().substring(file.originalname.lastIndexOf('.'));
-    
-    if (allowedMimeTypes.includes(file.mimetype) || allowedExtensions.includes(fileExtension)) {
-      cb(null, true);
-    } else {
-      cb(new Error('Invalid file type. Only .m4a, .mp3, .wav, .pdf, .docx, and .txt files are allowed.'), false);
-    }
-  }
-});
+const { validationResult } = require('express-validator');
+const comprehensiveAnalysisService = require('../../services/comprehensiveAnalysisService');
+const Analysis = require('../../models/Analysis');
+const User = require('../../models/User');
+const logger = require('../../utils/logger');
 
 // Helper function to get or create demo user
 async function getDemoUser() {
@@ -61,7 +26,6 @@ async function getDemoUser() {
     throw new Error('Failed to get demo user');
   }
 }
-
 
 // Helper function to get user data from request
 function getUserDataFromRequest(req) {
@@ -114,19 +78,12 @@ function getCompanyIdFromRequest(req) {
   return companyId && companyId !== 'null' && companyId !== '' ? companyId : null;
 }
 
-// Comprehensive Analysis - Main endpoint
-router.post('/', upload.fields([
-  { name: 'audioFile', maxCount: 1 },
-  { name: 'productServiceDocument', maxCount: 1 }
-]), [
-  body('callDataType').isIn(['audio', 'fathom', 'transcript']).withMessage('Call data type must be audio, fathom, or transcript'),
-  body('productServiceType').isIn(['url', 'document']).withMessage('Product/service type must be url or document'),
-  body('promptType').isIn(['default', 'custom']).withMessage('Prompt type must be default or custom'),
-  body('fathomUrl').optional().isURL().withMessage('Fathom URL must be valid'),
-  body('transcript').optional().isLength({ min: 50 }).withMessage('Transcript must be at least 50 characters'),
-  body('productServiceUrl').optional().isURL().withMessage('Product/service URL must be valid'),
-  body('customPrompt').optional().isLength({ min: 10 }).withMessage('Custom prompt must be at least 10 characters')
-], async (req, res) => {
+/**
+ * @desc    Process comprehensive analysis
+ * @route   POST /call-analyzer-api/comprehensive
+ * @access  Public
+ */
+exports.processAnalysis = async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -245,10 +202,14 @@ router.post('/', upload.fields([
       message: error.message || 'Failed to process comprehensive analysis'
     });
   }
-});
+};
 
-// Get analysis by ID
-router.get('/:id', async (req, res) => {
+/**
+ * @desc    Get analysis by ID
+ * @route   GET /call-analyzer-api/comprehensive/:id
+ * @access  Public
+ */
+exports.getAnalysisById = async (req, res) => {
   try {
     const companyId = getCompanyIdFromRequest(req);
     
@@ -286,10 +247,14 @@ router.get('/:id', async (req, res) => {
       message: 'Failed to fetch analysis'
     });
   }
-});
+};
 
-// Get all analyses (call history)
-router.get('/', async (req, res) => {
+/**
+ * @desc    Get all analyses (call history)
+ * @route   GET /call-analyzer-api/comprehensive
+ * @access  Public
+ */
+exports.getAllAnalyses = async (req, res) => {
   try {
     const { 
       page = 1, 
@@ -431,10 +396,14 @@ router.get('/', async (req, res) => {
       message: 'Failed to fetch analyses'
     });
   }
-});
+};
 
-// Delete analysis
-router.delete('/:id', async (req, res) => {
+/**
+ * @desc    Delete analysis
+ * @route   DELETE /call-analyzer-api/comprehensive/:id
+ * @access  Public
+ */
+exports.deleteAnalysis = async (req, res) => {
   try {
     const companyId = getCompanyIdFromRequest(req);
     
@@ -474,10 +443,14 @@ router.delete('/:id', async (req, res) => {
       message: 'Failed to delete analysis'
     });
   }
-});
+};
 
-// Get analysis statistics
-router.get('/stats/overview', async (req, res) => {
+/**
+ * @desc    Get analysis statistics
+ * @route   GET /call-analyzer-api/comprehensive/stats/overview
+ * @access  Public
+ */
+exports.getStatistics = async (req, res) => {
   try {
     const companyId = getCompanyIdFromRequest(req);
     
@@ -562,6 +535,5 @@ router.get('/stats/overview', async (req, res) => {
       message: 'Failed to fetch statistics'
     });
   }
-});
+};
 
-module.exports = router;
