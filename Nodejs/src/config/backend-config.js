@@ -10,7 +10,7 @@ const backendConfig = {
   isTest: process.env.NODE_ENV === 'test',
 
   // Database
-  mongodbUri: process.env.MONGODB_URI || null, // Don't use fallback, let database.js handle individual variables
+  mongodbUri: process.env.MONOGODB_URI || null, // Don't use fallback, let database.js handle individual variables
 
   // API Keys
   geminiApiKey: process.env.GEMINI_API_KEY || '',
@@ -28,7 +28,7 @@ const backendConfig = {
   rateLimitMaxRequests: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS, 10) || 100, // 100 requests per window
 
   validate() {
-    const requiredVars = ['MONGODB_URI', 'GEMINI_API_KEY'];
+    const requiredVars = ['MONOGODB_URI', 'GEMINI_API_KEY'];
     const missing = requiredVars.filter((v) => !process.env[v]);
     
     if (missing.length > 0) {

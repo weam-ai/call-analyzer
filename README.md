@@ -89,8 +89,7 @@ cp .env.example .env
 4. Configure environment variables in `.env`:
 ```env
 PORT=5001
-MONGODB_URI=mongodb://localhost:27017/sales_call_analyzer
-JWT_SECRET=your_jwt_secret_key
+MONOGODB_URI=mongodb://localhost:27017/sales_call_analyzer
 GEMINI_API_KEY=your_gemini_api_key
 ```
 

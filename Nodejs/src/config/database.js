@@ -11,10 +11,10 @@ const connectDB = async () => {
     if (mongoURI && mongoURI.trim() !== '') {
       logger.info(`Using MONGODB_URI for ${config.environment} connection`);
     } else {
-      logger.info('MONGODB_URI not provided, constructing from individual variables');
+      logger.info('MONOGODB_URI not provided, constructing from individual variables');
     }
 
-    // If MONGODB_URI is not available or empty, construct it from individual DB variables
+    // If MONOGODB_URI is not available or empty, construct it from individual DB variables
     if (!mongoURI || mongoURI.trim() === '') {
       logger.info('Constructing MongoDB URI from individual environment variables');
       
@@ -26,7 +26,7 @@ const connectDB = async () => {
       const dbPort = process.env.DB_PORT;
 
       if (!dbHost || !dbDatabase) {
-        throw new Error('Either MONGODB_URI or DB_HOST and DB_DATABASE must be defined in environment variables');
+        throw new Error('Either MONOGODB_URI or DB_HOST and DB_DATABASE must be defined in environment variables');
       }
 
       // Construct MongoDB URI based on connection type
