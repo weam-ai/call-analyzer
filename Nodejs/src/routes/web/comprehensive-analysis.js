@@ -52,6 +52,9 @@ router.post('/', upload.fields([
 // Get statistics (must be before /:id)
 router.get('/stats/overview', comprehensiveAnalysisController.getStatistics);
 
+// Get API health status
+router.get('/health', comprehensiveAnalysisController.getHealthStatus);
+
 // Get all analyses
 router.get('/', comprehensiveAnalysisController.getAllAnalyses);
 

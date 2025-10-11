@@ -4,6 +4,72 @@ const Analysis = require('../../models/Analysis');
 const User = require('../../models/User');
 const logger = require('../../utils/logger');
 
+// Simple in-memory cache for analysis lists
+const analysisCache = new Map();
+const CACHE_TTL = 30000; // 30 seconds
+const MAX_CACHE_SIZE = 100; // Maximum number of cached entries
+
+// Cache helper functions
+function generateCacheKey(companyId, page, limit, search, status, serviceType) {
+  return `${companyId}:${page}:${limit}:${search || ''}:${status}:${serviceType}`;
+}
+
+function getCachedData(cacheKey) {
+  try {
+    const cached = analysisCache.get(cacheKey);
+    if (cached && (Date.now() - cached.timestamp) < CACHE_TTL) {
+      return cached.data;
+    }
+    return null;
+  } catch (error) {
+    logger.error('Error getting cached data:', error);
+    return null;
+  }
+}
+
+function setCachedData(cacheKey, data) {
+  try {
+    // Clean up old entries if cache is getting too large
+    if (analysisCache.size >= MAX_CACHE_SIZE) {
+      const oldestKey = analysisCache.keys().next().value;
+      if (oldestKey) {
+        analysisCache.delete(oldestKey);
+      }
+    }
+    
+    analysisCache.set(cacheKey, {
+      data,
+      timestamp: Date.now()
+    });
+  } catch (error) {
+    logger.error('Error setting cached data:', error);
+    // Don't throw error - caching is not critical
+  }
+}
+
+function invalidateCacheForCompany(companyId) {
+  try {
+    if (!companyId) return;
+    
+    // Remove all cache entries for a specific company
+    const keysToDelete = [];
+    for (const [key, value] of analysisCache.entries()) {
+      if (key.startsWith(companyId + ':')) {
+        keysToDelete.push(key);
+      }
+    }
+    
+    keysToDelete.forEach(key => {
+      analysisCache.delete(key);
+    });
+    
+    logger.info(`Invalidated ${keysToDelete.length} cache entries for company ${companyId}`);
+  } catch (error) {
+    logger.error('Error invalidating cache for company:', error);
+    // Don't throw error - cache invalidation is not critical
+  }
+}
+
 // Helper function to get or create demo user
 async function getDemoUser() {
   try {
@@ -174,6 +240,11 @@ exports.processAnalysis = async (req, res) => {
 
     const analysis = await comprehensiveAnalysisService.processComprehensiveAnalysis(analysisData);
 
+    // Invalidate cache for this company since we added a new analysis
+    if (userData.companyId) {
+      invalidateCacheForCompany(userData.companyId);
+    }
+
     res.status(201).json({
       success: true,
       message: 'Comprehensive analysis completed',
@@ -263,42 +334,57 @@ exports.getAllAnalyses = async (req, res) => {
         }
       });
     }
+
+    // Validate pagination parameters
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
     
-    let userQuery = {
-      $or: [
-        { 'user.companyId': companyId },
-        { 'companyId': companyId }
-      ]
-    };
+    if (pageNum < 1 || limitNum < 1 || limitNum > 100) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid pagination parameters. Page must be >= 1, limit must be between 1-100'
+      });
+    }
+
+    // Check cache first
+    const cacheKey = generateCacheKey(companyId, pageNum, limitNum, search, status, serviceType);
+    const cachedData = getCachedData(cacheKey);
+    
+    if (cachedData) {
+      logger.info('Returning cached analysis data', { cacheKey, companyId });
+      return res.json({
+        success: true,
+        data: cachedData
+      });
+    }
+    
+    // Optimize query by using the most likely companyId field first
+    let userQuery = { 'user.companyId': companyId };
+    
+    // Note: We're using the simplified query structure for better performance
+    // If this causes issues with older records, we can add fallback logic here
 
     let searchQuery = {};
     if (search && search.trim() !== '') {
       const searchTerm = search.trim();
       const searchConditions = [];
       
+      // Optimize common search patterns first
       if (['audio', 'fathom', 'transcript'].includes(searchTerm.toLowerCase())) {
         searchConditions.push({ serviceType: searchTerm.toLowerCase() });
-      }
-      
-      if (['pending', 'processing', 'completed', 'failed'].includes(searchTerm.toLowerCase())) {
+      } else if (['pending', 'processing', 'completed', 'failed'].includes(searchTerm.toLowerCase())) {
         searchConditions.push({ status: searchTerm.toLowerCase() });
-      }
-      
-      if (!isNaN(searchTerm) && parseInt(searchTerm) >= 1 && parseInt(searchTerm) <= 10) {
+      } else if (!isNaN(searchTerm) && parseInt(searchTerm) >= 1 && parseInt(searchTerm) <= 10) {
         searchConditions.push({ 'results.callRating': parseInt(searchTerm) });
-      }
-      
-      if (searchTerm.toLowerCase() === 'high') {
+      } else if (searchTerm.toLowerCase() === 'high') {
         searchConditions.push({ 'results.callRating': { $gte: 8 } });
+      } else {
+        // Only use regex searches for text that doesn't match predefined patterns
+        searchConditions.push(
+          { 'input.audioFile.originalName': { $regex: searchTerm, $options: 'i' } },
+          { 'input.fathomUrl': { $regex: searchTerm, $options: 'i' } }
+        );
       }
-      
-      searchConditions.push(
-        { 'input.audioFile.originalName': { $regex: searchTerm, $options: 'i' } }
-      );
-      
-      searchConditions.push(
-        { 'input.fathomUrl': { $regex: searchTerm, $options: 'i' } }
-      );
       
       searchQuery = {
         $or: searchConditions
@@ -318,29 +404,183 @@ exports.getAllAnalyses = async (req, res) => {
       query.serviceType = serviceType;
     }
 
-    const analyses = await Analysis.find(query)
-      .sort({ createdAt: -1 })
-      .limit(limit * 1)
-      .skip((page - 1) * limit);
+    // Define field selection for optimal performance
+    const fieldSelection = {
+      _id: 1,
+      serviceType: 1,
+      status: 1,
+      'results.callRating': 1,
+      'results.callDescription': 1,
+      'results.summary': 1,
+      'results.callRatingBreakdown': 1,
+      'results.prospectDemographics': 1,
+      'results.salesPerformance': 1,
+      'results.keyInsights': 1,
+      'results.recommendations': 1,
+      'results.salesOpportunities': 1,
+      'results.otherNotableFindings': 1,
+      'results.actionItems': 1,
+      'results.sentiment': 1,
+      'results.topics': 1,
+      'results.participants': 1,
+      'results.riskFactors': 1,
+      'results.opportunities': 1,
+      'input.audioFile.originalName': 1,
+      'input.fathomUrl': 1,
+      'input.transcript': 1,
+      createdAt: 1,
+      'metadata.completedAt': 1,
+      'processing.llmAnalysis.processingTime': 1,
+      'processing.llmAnalysis.cost': 1
+    };
 
-    const total = await Analysis.countDocuments(query);
+    // Execute database queries with error handling
+    let analyses, total;
+    
+    try {
+      [analyses, total] = await Promise.all([
+        Analysis.find(query, fieldSelection)
+          .sort({ createdAt: -1 })
+          .limit(limitNum)
+          .skip((pageNum - 1) * limitNum)
+          .lean(), // Use lean() for better performance
+        Analysis.countDocuments(query)
+      ]);
+    } catch (dbError) {
+      logger.error('Database query error in getAllAnalyses:', dbError);
+      return res.status(500).json({
+        success: false,
+        message: 'Database error occurred while fetching analyses'
+      });
+    }
+
+    // Validate and sanitize response data
+    const sanitizedAnalyses = analyses.map(analysis => {
+      // Ensure all required fields exist with default values
+      return {
+        ...analysis,
+        results: {
+          callRating: analysis.results?.callRating || 0,
+          callDescription: analysis.results?.callDescription || '',
+          summary: analysis.results?.summary || '',
+          callRatingBreakdown: analysis.results?.callRatingBreakdown || {},
+          prospectDemographics: analysis.results?.prospectDemographics || {},
+          salesPerformance: analysis.results?.salesPerformance || {},
+          keyInsights: analysis.results?.keyInsights || [],
+          recommendations: analysis.results?.recommendations || [],
+          salesOpportunities: analysis.results?.salesOpportunities || {},
+          otherNotableFindings: analysis.results?.otherNotableFindings || [],
+          actionItems: analysis.results?.actionItems || [],
+          sentiment: analysis.results?.sentiment || {},
+          topics: analysis.results?.topics || [],
+          participants: analysis.results?.participants || [],
+          riskFactors: analysis.results?.riskFactors || [],
+          opportunities: analysis.results?.opportunities || []
+        },
+        input: {
+          audioFile: analysis.input?.audioFile || null,
+          fathomUrl: analysis.input?.fathomUrl || '',
+          transcript: analysis.input?.transcript || ''
+        },
+        processing: {
+          llmAnalysis: {
+            processingTime: analysis.processing?.llmAnalysis?.processingTime || 0,
+            cost: analysis.processing?.llmAnalysis?.cost || 0
+          }
+        }
+      };
+    });
+
+    const responseData = {
+      analyses: sanitizedAnalyses,
+      pagination: {
+        current: pageNum,
+        pages: Math.ceil(total / limitNum),
+        total: total || 0
+      }
+    };
+
+    // Cache the response (non-blocking)
+    setCachedData(cacheKey, responseData);
+
+    logger.info('Successfully fetched analyses', { 
+      companyId, 
+      count: analyses.length, 
+      total, 
+      page: pageNum, 
+      limit: limitNum 
+    });
 
     res.json({
       success: true,
-      data: {
-        analyses,
-        pagination: {
-          current: parseInt(page),
-          pages: Math.ceil(total / limit),
-          total
-        }
-      }
+      data: responseData
     });
   } catch (error) {
     logger.error('Get analyses error:', error);
+    
+    // Provide more specific error messages based on error type
+    let errorMessage = 'Failed to fetch analyses';
+    let statusCode = 500;
+    
+    if (error.name === 'ValidationError') {
+      errorMessage = 'Invalid query parameters';
+      statusCode = 400;
+    } else if (error.name === 'CastError') {
+      errorMessage = 'Invalid data format in request';
+      statusCode = 400;
+    } else if (error.code === 11000) {
+      errorMessage = 'Duplicate entry found';
+      statusCode = 409;
+    }
+    
+    res.status(statusCode).json({
+      success: false,
+      message: errorMessage,
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+};
+
+/**
+ * @desc    Get API health status and cache statistics
+ * @route   GET /call-analyzer-api/comprehensive/health
+ * @access  Public
+ */
+exports.getHealthStatus = async (req, res) => {
+  try {
+    const healthData = {
+      status: 'healthy',
+      timestamp: new Date().toISOString(),
+      cache: {
+        size: analysisCache.size,
+        maxSize: MAX_CACHE_SIZE,
+        ttl: CACHE_TTL
+      },
+      database: {
+        status: 'connected'
+      }
+    };
+
+    // Test database connection
+    try {
+      await Analysis.findOne().limit(1);
+      healthData.database.status = 'connected';
+    } catch (dbError) {
+      healthData.database.status = 'disconnected';
+      healthData.status = 'unhealthy';
+      healthData.database.error = dbError.message;
+    }
+
+    res.json({
+      success: true,
+      data: healthData
+    });
+  } catch (error) {
+    logger.error('Health check error:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to fetch analyses'
+      message: 'Health check failed',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 };
@@ -377,6 +617,9 @@ exports.deleteAnalysis = async (req, res) => {
         message: 'Analysis not found'
       });
     }
+
+    // Invalidate cache for this company since we deleted an analysis
+    invalidateCacheForCompany(companyId);
 
     res.json({
       success: true,
