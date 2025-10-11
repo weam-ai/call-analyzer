@@ -757,49 +757,49 @@ export function ComprehensiveAnalysisWizard({
           {currentStep === 2 && renderStep2()}
           {currentStep === 3 && renderStep3()}
           {currentStep === 4 && renderStep4()}
+
+          {/* Navigation */}
+          <div className="flex justify-between items-center mt-8 pt-6 border-t border-slate-200">
+            <Button
+              variant="outline"
+              onClick={handlePrevious}
+              disabled={currentStep === 1 || isAnalyzing}
+              className="h-9 px-4 text-sm font-medium transition-all duration-200 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed border-slate-300 hover:border-slate-400"
+            >
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              Previous
+            </Button>
+
+            {currentStep < 4 ? (
+              <Button 
+                onClick={handleNext}
+                className="h-9 px-6 text-sm font-medium bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 transition-all duration-200 hover:scale-105 shadow-sm"
+              >
+                Next
+                <ArrowRight className="w-4 h-4 ml-2" />
+              </Button>
+            ) : (
+              <Button 
+                onClick={handleSubmit}
+                disabled={isAnalyzing}
+                className="h-9 px-6 text-sm font-medium bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 transition-all duration-200 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+              >
+                {isAnalyzing ? (
+                  <>
+                    <div className="w-4 h-4 mr-2 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                    Analyzing...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle className="w-4 h-4 mr-2" />
+                    Run Analysis
+                  </>
+                )}
+              </Button>
+            )}
+          </div>
         </CardContent>
       </Card>
-
-      {/* Navigation */}
-      <div className="flex justify-between items-center bg-white/90 backdrop-blur-sm rounded-lg p-4 border border-slate-200 shadow-md">
-        <Button
-          variant="outline"
-          onClick={handlePrevious}
-          disabled={currentStep === 1}
-          className="h-9 px-4 text-sm font-medium transition-all duration-200 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed border-slate-300 hover:border-slate-400"
-        >
-          <ArrowLeft className="w-4 h-4 mr-2" />
-          Previous
-        </Button>
-
-        {currentStep < 4 ? (
-          <Button 
-            onClick={handleNext}
-            className="h-9 px-6 text-sm font-medium bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 transition-all duration-200 hover:scale-105 shadow-sm"
-          >
-            Next
-            <ArrowRight className="w-4 h-4 ml-2" />
-          </Button>
-        ) : (
-          <Button 
-            onClick={handleSubmit}
-            disabled={isAnalyzing}
-            className="h-9 px-6 text-sm font-medium bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 transition-all duration-200 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
-          >
-            {isAnalyzing ? (
-              <>
-                <div className="w-4 h-4 mr-2 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                Analyzing...
-              </>
-            ) : (
-              <>
-                <CheckCircle className="w-4 h-4 mr-2" />
-                Run Analysis
-              </>
-            )}
-          </Button>
-        )}
-      </div>
     </div>
   )
 }
