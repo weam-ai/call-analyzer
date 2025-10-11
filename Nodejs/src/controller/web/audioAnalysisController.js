@@ -1,47 +1,13 @@
-const express = require('express');
-const multer = require('multer');
-const audioAnalysisService = require('../services/audioAnalysisService');
-const auth = require('../middleware/auth');
-const { body, validationResult } = require('express-validator');
-const logger = require('../utils/logger');
-
-const router = express.Router();
-
-// Configure multer for audio file uploads
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: {
-    fileSize: 100 * 1024 * 1024, // 100MB limit
-  },
-  fileFilter: (req, file, cb) => {
-    const allowedMimeTypes = [
-      'audio/mpeg',
-      'audio/wav',
-      'audio/mp4',
-      'audio/aac',
-      'audio/ogg',
-      'audio/flac',
-      'audio/x-ms-wma',
-      'audio/aiff',
-      'audio/basic'
-    ];
-
-    if (allowedMimeTypes.includes(file.mimetype)) {
-      cb(null, true);
-    } else {
-      cb(new Error(`Unsupported file type: ${file.mimetype}`), false);
-    }
-  }
-});
+const audioAnalysisService = require('../../services/audioAnalysisService');
+const logger = require('../../utils/logger');
 
 /**
- * @route   POST /api/audio-analysis/upload
  * @desc    Upload audio file and start analysis
+ * @route   POST /call-analyzer-api/audio-analysis/upload
  * @access  Private
  */
-router.post('/upload', upload.single('audioFile'), async (req, res) => {
+exports.uploadAudio = async (req, res) => {
   try {
-    // Check if file was uploaded
     if (!req.file) {
       return res.status(400).json({
         success: false,
@@ -69,7 +35,6 @@ router.post('/upload', upload.single('audioFile'), async (req, res) => {
       analysisType
     });
 
-    // Process audio file
     const analysis = await audioAnalysisService.processAudioAnalysis(
       req.file,
       userId,
@@ -99,14 +64,14 @@ router.post('/upload', upload.single('audioFile'), async (req, res) => {
       error: error.message
     });
   }
-});
+};
 
 /**
- * @route   GET /api/audio-analysis/:id
  * @desc    Get analysis by ID
+ * @route   GET /call-analyzer-api/audio-analysis/:id
  * @access  Private
  */
-router.get('/:id', async (req, res) => {
+exports.getAnalysisById = async (req, res) => {
   try {
     const { id } = req.params;
     const userId = req.user.id;
@@ -134,16 +99,15 @@ router.get('/:id', async (req, res) => {
       error: error.message
     });
   }
-});
+};
 
 /**
- * @route   GET /api/audio-analysis
  * @desc    Get all analyses for user
+ * @route   GET /call-analyzer-api/audio-analysis
  * @access  Private
  */
-router.get('/', async (req, res) => {
+exports.getUserAnalyses = async (req, res) => {
   try {
-
     const userId = req.user.id;
     const {
       page = 1,
@@ -173,14 +137,14 @@ router.get('/', async (req, res) => {
       error: error.message
     });
   }
-});
+};
 
 /**
- * @route   DELETE /api/audio-analysis/:id
- * @desc    Delete analysis and associated files
+ * @desc    Delete analysis
+ * @route   DELETE /call-analyzer-api/audio-analysis/:id
  * @access  Private
  */
-router.delete('/:id', async (req, res) => {
+exports.deleteAnalysis = async (req, res) => {
   try {
     const { id } = req.params;
     const userId = req.user.id;
@@ -208,14 +172,14 @@ router.delete('/:id', async (req, res) => {
       error: error.message
     });
   }
-});
+};
 
 /**
- * @route   POST /api/audio-analysis/:id/retry
  * @desc    Retry failed analysis
+ * @route   POST /call-analyzer-api/audio-analysis/:id/retry
  * @access  Private
  */
-router.post('/:id/retry', async (req, res) => {
+exports.retryAnalysis = async (req, res) => {
   try {
     const { id } = req.params;
     const userId = req.user.id;
@@ -247,16 +211,15 @@ router.post('/:id/retry', async (req, res) => {
       error: error.message
     });
   }
-});
+};
 
 /**
- * @route   GET /api/audio-analysis/:id/export
  * @desc    Export analysis data
+ * @route   GET /call-analyzer-api/audio-analysis/:id/export
  * @access  Private
  */
-router.get('/:id/export', async (req, res) => {
+exports.exportAnalysis = async (req, res) => {
   try {
-
     const { id } = req.params;
     const { format = 'json' } = req.query;
     const userId = req.user.id;
@@ -290,14 +253,14 @@ router.get('/:id/export', async (req, res) => {
       error: error.message
     });
   }
-});
+};
 
 /**
- * @route   GET /api/audio-analysis/stats/overview
  * @desc    Get analysis statistics
+ * @route   GET /call-analyzer-api/audio-analysis/stats/overview
  * @access  Private
  */
-router.get('/stats/overview', async (req, res) => {
+exports.getStatistics = async (req, res) => {
   try {
     const userId = req.user.id;
     const stats = await audioAnalysisService.getAnalysisStats(userId);
@@ -315,16 +278,15 @@ router.get('/stats/overview', async (req, res) => {
       error: error.message
     });
   }
-});
+};
 
 /**
- * @route   GET /api/audio-analysis/files/list
  * @desc    List uploaded files
+ * @route   GET /call-analyzer-api/audio-analysis/files/list
  * @access  Private
  */
-router.get('/files/list', async (req, res) => {
+exports.listFiles = async (req, res) => {
   try {
-
     const { pageSize = 10 } = req.query;
     const files = await audioAnalysisService.listUploadedFiles(parseInt(pageSize));
 
@@ -341,14 +303,14 @@ router.get('/files/list', async (req, res) => {
       error: error.message
     });
   }
-});
+};
 
 /**
- * @route   GET /api/audio-analysis/files/:fileName/metadata
  * @desc    Get file metadata
+ * @route   GET /call-analyzer-api/audio-analysis/files/:fileName/metadata
  * @access  Private
  */
-router.get('/files/:fileName/metadata', async (req, res) => {
+exports.getFileMetadata = async (req, res) => {
   try {
     const { fileName } = req.params;
     const metadata = await audioAnalysisService.getFileMetadata(fileName);
@@ -366,14 +328,14 @@ router.get('/files/:fileName/metadata', async (req, res) => {
       error: error.message
     });
   }
-});
+};
 
 /**
- * @route   POST /api/audio-analysis/cleanup
  * @desc    Cleanup old files
+ * @route   POST /call-analyzer-api/audio-analysis/cleanup
  * @access  Private
  */
-router.post('/cleanup', async (req, res) => {
+exports.cleanupFiles = async (req, res) => {
   try {
     const result = await audioAnalysisService.cleanupOldFiles();
 
@@ -391,6 +353,5 @@ router.post('/cleanup', async (req, res) => {
       error: error.message
     });
   }
-});
+};
 
-module.exports = router;

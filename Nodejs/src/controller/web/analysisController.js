@@ -1,15 +1,11 @@
-const express = require('express');
-const multer = require('multer');
-const { body, validationResult } = require('express-validator');
-const audioAnalysisService = require('../services/audioAnalysisService');
-const fathomService = require('../services/fathomService');
-const transcriptService = require('../services/transcriptService');
-const Analysis = require('../models/Analysis');
-const User = require('../models/User');
-const logger = require('../utils/logger');
-const config = require('../config/backend-config');
-
-const router = express.Router();
+const { validationResult } = require('express-validator');
+const audioAnalysisService = require('../../services/audioAnalysisService');
+const fathomService = require('../../services/fathomService');
+const transcriptService = require('../../services/transcriptService');
+const Analysis = require('../../models/Analysis');
+const User = require('../../models/User');
+const logger = require('../../utils/logger');
+const config = require('../../config/backend-config');
 
 // Helper function to get or create demo user
 async function getDemoUser() {
@@ -20,7 +16,7 @@ async function getDemoUser() {
       demoUser = new User({
         name: 'Demo User',
         email: 'demo@salescallanalyzer.com',
-        password: 'demo123', // This won't be used for authentication
+        password: 'demo123',
         role: 'user'
       });
       await demoUser.save();
@@ -33,7 +29,6 @@ async function getDemoUser() {
     throw new Error('Failed to get demo user');
   }
 }
-
 
 // Helper function to get user data from request
 function getUserDataFromRequest(req) {
@@ -68,34 +63,12 @@ function getUserDataFromRequest(req) {
   };
 }
 
-// Configure multer for file uploads
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: {
-    fileSize: 100 * 1024 * 1024 // 100MB (increased for audio files)
-  },
-  fileFilter: (req, file, cb) => {
-    // Allow audio files and documents
-    const allowedMimes = [
-      'audio/mpeg', 'audio/wav', 'audio/mp4', 'audio/aac', 'audio/ogg', 'audio/flac',
-      'audio/x-ms-wma', 'audio/aiff', 'audio/basic', // Additional audio formats
-      'application/pdf', 'text/plain', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-    ];
-    
-    // Check by file extension as fallback
-    const fileExtension = file.originalname.toLowerCase().split('.').pop();
-    const allowedExtensions = ['mp3', 'wav', 'm4a', 'aac', 'ogg', 'flac', 'pdf', 'txt', 'doc', 'docx'];
-    
-    if (allowedMimes.includes(file.mimetype) || allowedExtensions.includes(fileExtension)) {
-      cb(null, true);
-    } else {
-      cb(new Error('Invalid file type. Only audio files and documents are allowed.'), false);
-    }
-  }
-});
-
-// Get all analyses (no auth required)
-router.get('/', async (req, res) => {
+/**
+ * @desc    Get all analyses
+ * @route   GET /call-analyzer-api/analysis
+ * @access  Public
+ */
+exports.getAllAnalyses = async (req, res) => {
   try {
     const { page = 1, limit = 10, serviceType, status } = req.query;
     
@@ -130,10 +103,14 @@ router.get('/', async (req, res) => {
       message: 'Failed to fetch analyses'
     });
   }
-});
+};
 
-// Get specific analysis (no auth required)
-router.get('/:id', async (req, res) => {
+/**
+ * @desc    Get specific analysis
+ * @route   GET /call-analyzer-api/analysis/:id
+ * @access  Public
+ */
+exports.getAnalysisById = async (req, res) => {
   try {
     const demoUser = await getDemoUser();
     const analysis = await Analysis.findOne({
@@ -159,16 +136,15 @@ router.get('/:id', async (req, res) => {
       message: 'Failed to fetch analysis'
     });
   }
-});
+};
 
-// Audio Service - Analyze uploaded audio file using Gemini Files API (no auth required)
-router.post('/audio', upload.single('audioFile'), [
-  body('additionalUrl').optional().isURL().withMessage('Invalid URL format'),
-  body('additionalDocument').optional().isString(),
-  body('analysisType').optional().isIn(['comprehensive', 'basic', 'transcript-only'])
-], async (req, res) => {
+/**
+ * @desc    Analyze uploaded audio file using Gemini Files API
+ * @route   POST /call-analyzer-api/analysis/audio
+ * @access  Public
+ */
+exports.analyzeAudio = async (req, res) => {
   try {
-    // Check validation errors
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return res.status(400).json({
@@ -185,7 +161,7 @@ router.post('/audio', upload.single('audioFile'), [
       });
     }
 
-    // Validate audio file using the new service
+    // Validate audio file
     try {
       audioAnalysisService.validateAudioFile(req.file);
     } catch (validationError) {
@@ -227,7 +203,7 @@ router.post('/audio', upload.single('audioFile'), [
       companyId: userData.companyId
     });
 
-    // Process audio file using the new audio analysis service
+    // Process audio file
     const analysis = await audioAnalysisService.processAudioAnalysis(
       req.file,
       userId,
@@ -270,12 +246,14 @@ router.post('/audio', upload.single('audioFile'), [
       error: config.isDevelopment ? error.stack : undefined
     });
   }
-});
+};
 
-// Fathom Service - Analyze Fathom video URL with embedded transcript (no auth required)
-router.post('/fathom', [
-  body('url').isURL().withMessage('Valid Fathom URL is required')
-], async (req, res) => {
+/**
+ * @desc    Analyze Fathom video URL
+ * @route   POST /call-analyzer-api/analysis/fathom
+ * @access  Public
+ */
+exports.analyzeFathom = async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -286,10 +264,8 @@ router.post('/fathom', [
       });
     }
 
-    // Get user data from request
     const userData = getUserDataFromRequest(req);
     
-    // Use provided user data or fall back to demo user
     let userId;
     if (userData.userId) {
       userId = userData.userId;
@@ -333,12 +309,14 @@ router.post('/fathom', [
       message: error.message || 'Failed to process Fathom analysis'
     });
   }
-});
+};
 
-// Keep phantom route for backward compatibility (redirects to fathom) - no auth required
-router.post('/phantom', [
-  body('url').isURL().withMessage('Valid URL is required')
-], async (req, res) => {
+/**
+ * @desc    Analyze provided transcript
+ * @route   POST /call-analyzer-api/analysis/transcript
+ * @access  Public
+ */
+exports.analyzeTranscript = async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -349,54 +327,8 @@ router.post('/phantom', [
       });
     }
 
-    const demoUser = await getDemoUser();
-    const { url, additionalUrl, additionalDocument } = req.body;
-    let additionalContent = null;
-
-    if (additionalUrl) {
-      additionalContent = { type: 'url', url: additionalUrl };
-    } else if (additionalDocument) {
-      additionalContent = { type: 'document', file: additionalDocument };
-    }
-
-    const analysis = await fathomService.processFathomCall(
-      url,
-      demoUser._id,
-      additionalContent
-    );
-
-    res.status(201).json({
-      success: true,
-      message: 'Fathom analysis started (via phantom endpoint)',
-      data: analysis
-    });
-  } catch (error) {
-    logger.error('Fathom analysis error (via phantom):', error);
-    res.status(500).json({
-      success: false,
-      message: error.message || 'Failed to process Fathom analysis'
-    });
-  }
-});
-
-// Transcript Service - Analyze provided transcript (no auth required)
-router.post('/transcript', [
-  body('transcript').isLength({ min: 50 }).withMessage('Transcript must be at least 50 characters long')
-], async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({
-        success: false,
-        message: 'Validation failed',
-        errors: errors.array()
-      });
-    }
-
-    // Get user data from request
     const userData = getUserDataFromRequest(req);
     
-    // Use provided user data or fall back to demo user
     let userId;
     if (userData.userId) {
       userId = userData.userId;
@@ -440,10 +372,14 @@ router.post('/transcript', [
       message: error.message || 'Failed to process transcript analysis'
     });
   }
-});
+};
 
-// Delete analysis (no auth required)
-router.delete('/:id', async (req, res) => {
+/**
+ * @desc    Delete analysis
+ * @route   DELETE /call-analyzer-api/analysis/:id
+ * @access  Public
+ */
+exports.deleteAnalysis = async (req, res) => {
   try {
     const demoUser = await getDemoUser();
     const analysis = await Analysis.findOneAndDelete({
@@ -469,10 +405,14 @@ router.delete('/:id', async (req, res) => {
       message: 'Failed to delete analysis'
     });
   }
-});
+};
 
-// Get analysis statistics (no auth required)
-router.get('/stats/overview', async (req, res) => {
+/**
+ * @desc    Get analysis statistics
+ * @route   GET /call-analyzer-api/analysis/stats/overview
+ * @access  Public
+ */
+exports.getStatistics = async (req, res) => {
   try {
     const demoUser = await getDemoUser();
     const userId = demoUser._id;
@@ -526,6 +466,5 @@ router.get('/stats/overview', async (req, res) => {
       message: 'Failed to fetch statistics'
     });
   }
-});
+};
 
-module.exports = router;
