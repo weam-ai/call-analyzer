@@ -1,0 +1,37 @@
+services:
+  call-analyzer-backend:
+    build: 
+      context: ./Nodejs
+      dockerfile: Dockerfile
+    ports:
+      - "5002:5000"
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=production
+    restart: unless-stopped
+    networks:
+      - weam_app-network
+    volumes:
+      - ./Nodejs/logs:/app/logs
+      - ./Nodejs/uploads:/app/uploads
+
+  call-analyzer-frontend:
+    build:
+      context: ./Nextjs
+      dockerfile: Dockerfile
+    ports:
+      - "5003:3000"
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=production
+    restart: unless-stopped
+    networks:
+      - weam_app-network
+    depends_on:
+      - call-analyzer-backend
+
+networks:
+  weam_app-network:
+    external: true

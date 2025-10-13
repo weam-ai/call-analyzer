@@ -27,6 +27,9 @@ const backendConfig = {
   rateLimitWindowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS, 10) || 900000, // 15 minutes
   rateLimitMaxRequests: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS, 10) || 100, // 100 requests per window
 
+  // CORS
+  corsOrigin: process.env.CORS_ORIGIN || 'http://localhost:5003',
+
   validate() {
     const requiredVars = ['MONOGODB_URI', 'GEMINI_API_KEY'];
     const missing = requiredVars.filter((v) => !process.env[v]);

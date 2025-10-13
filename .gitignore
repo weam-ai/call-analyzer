@@ -4,3 +4,4 @@
 /Nextjs/.env
 /Nodejs/.env
 .env
+/Nodejs/logs/
