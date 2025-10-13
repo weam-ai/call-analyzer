@@ -22,6 +22,12 @@ services:
     build:
       context: ./Nextjs
       dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_ENVIRONMENT: ${NEXT_PUBLIC_ENVIRONMENT}
+        NEXT_PUBLIC_BASE_PATH: ${NEXT_PUBLIC_BASE_PATH}
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+        NEXT_PUBLIC_COOKIE_NAME: ${NEXT_PUBLIC_COOKIE_NAME}
+        NEXT_PUBLIC_COOKIE_PASSWORD: ${NEXT_PUBLIC_COOKIE_PASSWORD}
     image: call-analyzer-frontend-img
     container_name: call-analyzer-frontend-container
     ports:
