@@ -4,16 +4,48 @@ const Analysis = require('../models/Analysis');
 const logger = require('../utils/logger');
 
 class TranscriptService {
-  async processTranscriptCall(transcript, userId, additionalContent = null) {
+  async processTranscriptCall(transcript, userId, additionalContent = null, userData = null) {
     let analysis = null;
+    const processingStartTime = Date.now();
 
     try {
-      // Validate transcript
-      this.validateTranscript(transcript);
-
-      // Create analysis record
-      analysis = new Analysis({
+      logger.info('=== TRANSCRIPT SERVICE: Starting transcript analysis ===', {
         userId,
+        transcriptLength: transcript?.length,
+        hasAdditionalContent: !!additionalContent,
+        additionalContentType: additionalContent?.type
+      });
+
+      // Validate transcript
+      logger.info('TRANSCRIPT SERVICE: Validating transcript');
+      this.validateTranscript(transcript);
+      logger.info('TRANSCRIPT SERVICE: Transcript validation successful', {
+        wordCount: transcript.split(/\s+/).length,
+        charCount: transcript.length
+      });
+
+      // Create user object from session data
+      let userObject = null;
+      if (userData && (userData.userId || userData.email)) {
+        // Use session user data if available
+        userObject = {
+          email: userData.email || null,
+          userId: userData.userId || null,
+          companyId: userData.companyId || null
+        };
+        logger.info('TRANSCRIPT SERVICE: User data identified', {
+          email: userData.email,
+          userId: userData.userId,
+          companyId: userData.companyId
+        });
+      } else {
+        logger.warn('TRANSCRIPT SERVICE: No user data provided in session');
+      }
+
+      // Create analysis record using user object
+      logger.info('TRANSCRIPT SERVICE: Creating analysis record in database');
+      analysis = new Analysis({
+        user: userObject,
         serviceType: 'transcript',
         status: 'processing',
         input: {
@@ -21,45 +53,89 @@ class TranscriptService {
         }
       });
       await analysis.save();
-
-      logger.info('Starting transcript analysis', { analysisId: analysis._id });
-
-      // Step 1: Initialize LLM (already done in llmService)
+      logger.info('TRANSCRIPT SERVICE: Analysis record created', { 
+        analysisId: analysis._id,
+        serviceType: 'transcript'
+      });
 
       // Step 2: Process additional content if provided
       let scrapedContent = '';
       if (additionalContent) {
+        logger.info('TRANSCRIPT SERVICE: Additional content detected', {
+          type: additionalContent.type,
+          url: additionalContent.url,
+          fileName: additionalContent.file?.originalname
+        });
+
         if (additionalContent.type === 'url') {
+          logger.info('TRANSCRIPT SERVICE: Starting URL scraping for product/service information', {
+            url: additionalContent.url
+          });
           scrapedContent = await this.scrapeUrl(additionalContent.url);
+          logger.info('TRANSCRIPT SERVICE: URL scraping completed', {
+            url: additionalContent.url,
+            scrapedContentLength: scrapedContent?.text?.length || 0
+          });
         } else if (additionalContent.type === 'document') {
+          logger.info('TRANSCRIPT SERVICE: Starting document processing', {
+            fileName: additionalContent.file?.originalname
+          });
           scrapedContent = await this.processDocument(additionalContent.file);
+          logger.info('TRANSCRIPT SERVICE: Document processing completed', {
+            fileName: additionalContent.file?.originalname,
+            contentLength: scrapedContent?.text?.length || 0
+          });
         }
+      } else {
+        logger.info('TRANSCRIPT SERVICE: No additional content provided');
       }
 
       // Update analysis with transcript info
+      const wordCount = transcript.split(/\s+/).length;
+      logger.info('TRANSCRIPT SERVICE: Updating analysis with transcript metadata', {
+        wordCount,
+        charCount: transcript.length
+      });
+
       analysis.processing.transcript = {
         text: transcript,
         confidence: 1.0, // User provided transcript
         language: 'en', // Could be detected
         duration: 0, // Would need audio analysis
-        wordCount: transcript.split(/\s+/).length
+        wordCount: wordCount
       };
 
       // Update analysis with scraped content if any
       if (scrapedContent) {
         analysis.processing.scrapedContent = scrapedContent;
+        logger.info('TRANSCRIPT SERVICE: Additional content added to analysis', {
+          contentType: additionalContent.type
+        });
       }
 
       await analysis.save();
+      logger.info('TRANSCRIPT SERVICE: Analysis metadata saved to database');
 
-      // Step 3: Initialize Repository & History (handled by LLM service)
-      // Step 4: Add prompt templates and send to LLM
+      // Step 4: Send to LLM for analysis
+      logger.info('TRANSCRIPT SERVICE: Starting LLM analysis', {
+        transcriptWordCount: wordCount,
+        hasAdditionalContent: !!scrapedContent
+      });
+
       const llmResult = await llmService.analyzeSalesCall(
         transcript,
         scrapedContent
       );
 
+      logger.info('TRANSCRIPT SERVICE: LLM analysis completed', {
+        model: llmResult.model,
+        processingTime: llmResult.processingTime,
+        tokensUsed: llmResult.tokenUsage?.total,
+        cost: llmResult.cost
+      });
+
       // Update analysis with LLM results
+      logger.info('TRANSCRIPT SERVICE: Updating analysis with LLM results');
       analysis.processing.llmAnalysis = {
         prompt: 'Sales call analysis prompt',
         response: llmResult.response,
@@ -70,29 +146,50 @@ class TranscriptService {
       };
 
       // Parse LLM response and extract structured data
+      logger.info('TRANSCRIPT SERVICE: Parsing LLM response to extract structured data');
       const parsedResults = this.parseLLMResponse(llmResult.response);
       analysis.results = parsedResults;
-
-      // Step 5: Delete temporary files if any
-      // (No temporary files in transcript service)
+      logger.info('TRANSCRIPT SERVICE: Structured data extracted successfully', {
+        hasCallRating: !!parsedResults.callRating,
+        hasRecommendations: !!parsedResults.recommendations,
+        recommendationsCount: parsedResults.recommendations?.length || 0,
+        hasKeyInsights: !!parsedResults.keyInsights,
+        insightsCount: parsedResults.keyInsights?.length || 0
+      });
 
       // Step 6: Calculate final cost and update metadata
+      const totalProcessingTime = Date.now() - processingStartTime;
+      logger.info('TRANSCRIPT SERVICE: Finalizing analysis', {
+        llmProcessingTime: llmResult.processingTime,
+        totalProcessingTime: totalProcessingTime,
+        cost: llmResult.cost
+      });
+
       analysis.metadata.processingTime = llmResult.processingTime;
       analysis.status = 'completed';
       analysis.metadata.completedAt = new Date();
 
       await analysis.save();
 
-      logger.info('Transcript analysis completed', {
+      logger.info('=== TRANSCRIPT SERVICE: Analysis completed successfully ===', {
         analysisId: analysis._id,
-        cost: llmResult.cost,
-        processingTime: llmResult.processingTime
+        cost: `$${llmResult.cost?.toFixed(4)}`,
+        llmProcessingTime: `${llmResult.processingTime}ms`,
+        totalProcessingTime: `${totalProcessingTime}ms`,
+        tokensUsed: llmResult.tokenUsage?.total,
+        callRating: parsedResults.callRating
       });
 
       return analysis;
 
     } catch (error) {
-      logger.error('Transcript analysis failed:', error);
+      const totalProcessingTime = Date.now() - processingStartTime;
+      logger.error('=== TRANSCRIPT SERVICE: Analysis failed ===', {
+        error: error.message,
+        stack: error.stack,
+        totalProcessingTime: `${totalProcessingTime}ms`,
+        analysisId: analysis?._id
+      });
       
       if (analysis) {
         analysis.status = 'failed';
@@ -130,16 +227,31 @@ class TranscriptService {
 
   async scrapeUrl(url) {
     try {
+      logger.info('TRANSCRIPT SERVICE: Extracting product/service info from URL using LLM', { url });
+      const startTime = Date.now();
+      
       const result = await llmService.extractTranscriptFromUrl(url);
+      
+      const processingTime = Date.now() - startTime;
+      logger.info('TRANSCRIPT SERVICE: URL content extraction successful', {
+        url,
+        contentLength: result.text?.length,
+        wordCount: result.wordCount,
+        processingTime: `${processingTime}ms`
+      });
       
       return {
         text: result.text,
         url,
-        title: 'Scraped Content',
+        title: result.title || 'Scraped Content',
         wordCount: result.wordCount
       };
     } catch (error) {
-      logger.error('URL scraping failed:', error);
+      logger.error('TRANSCRIPT SERVICE: URL scraping failed', {
+        url,
+        error: error.message,
+        stack: error.stack
+      });
       throw new Error(`Failed to scrape URL: ${error.message}`);
     }
   }

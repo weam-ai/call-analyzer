@@ -1,10 +1,19 @@
 const mongoose = require('mongoose');
 
 const analysisSchema = new mongoose.Schema({
-  userId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true
+  user: {
+    email: {
+      type: String,
+      default: null
+    },
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      default: null
+    },
+    companyId: {
+      type: String,
+      default: null
+    }
   },
   serviceType: {
     type: String,
@@ -27,6 +36,7 @@ const analysisSchema = new mongoose.Schema({
     },
     fathomUrl: String,
     transcript: String,
+    transcriptHash: String, // Hash for duplicate detection
     
     // Step 2: Product/Service Information (only one can be used)
     productServiceUrl: String,
@@ -176,6 +186,12 @@ analysisSchema.index({ userId: 1, createdAt: -1 });
 analysisSchema.index({ serviceType: 1, status: 1 });
 analysisSchema.index({ 'metadata.createdAt': -1 });
 
+// Compound indexes for pagination and filtering
+analysisSchema.index({ 'user.companyId': 1, createdAt: -1 });
+analysisSchema.index({ companyId: 1, createdAt: -1 });
+analysisSchema.index({ 'user.companyId': 1, serviceType: 1, status: 1, createdAt: -1 });
+analysisSchema.index({ companyId: 1, serviceType: 1, status: 1, createdAt: -1 });
+
 // Virtual for total processing time
 analysisSchema.virtual('totalProcessingTime').get(function() {
   if (this.metadata.completedAt && this.metadata.createdAt) {
@@ -212,4 +228,4 @@ analysisSchema.methods.addAnalysisResults = function(results) {
   return this.save();
 };
 
-module.exports = mongoose.model('Analysis', analysisSchema);
+module.exports = mongoose.model('Analysis', analysisSchema, 'agent_sales_call_analyzer');

@@ -1,3 +1,6 @@
 /Nextjs/.next
 /Nextjs/node_modules
 /Nodejs/node_modules
+/Nextjs/.env
+/Nodejs/.env
+.env

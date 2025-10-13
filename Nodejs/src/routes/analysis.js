@@ -7,6 +7,7 @@ const transcriptService = require('../services/transcriptService');
 const Analysis = require('../models/Analysis');
 const User = require('../models/User');
 const logger = require('../utils/logger');
+const config = require('../config/backend-config');
 
 const router = express.Router();
 
@@ -33,6 +34,40 @@ async function getDemoUser() {
   }
 }
 
+
+// Helper function to get user data from request
+function getUserDataFromRequest(req) {
+  let userId = null;
+  let email = null;
+  let companyId = null;
+  
+  // Try to get user data from request body (FormData)
+  if (req.body.userId) {
+    userId = req.body.userId;
+    email = req.body.email;
+    companyId = req.body.companyId;
+  }
+  
+  // Try to get user data from headers (JSON API calls)
+  if (!userId && req.headers['x-user-data']) {
+    try {
+      const userData = JSON.parse(req.headers['x-user-data']);
+      userId = userData.userId;
+      email = userData.email;
+      companyId = userData.companyId;
+    } catch (error) {
+      logger.warn('Failed to parse user data from headers:', error);
+    }
+  }
+  
+  // Only return non-null values if we have actual user data
+  return {
+    userId: userId && userId !== 'null' && userId !== '' ? userId : null,
+    email: email && email !== 'null' && email !== '' ? email : null,
+    companyId: companyId && companyId !== 'null' && companyId !== '' ? companyId : null
+  };
+}
+
 // Configure multer for file uploads
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -47,13 +82,6 @@ const upload = multer({
       'application/pdf', 'text/plain', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
     ];
     
-    // Debug logging
-    console.log('File upload attempt:', {
-      originalname: file.originalname,
-      mimetype: file.mimetype,
-      fieldname: file.fieldname
-    });
-    
     // Check by file extension as fallback
     const fileExtension = file.originalname.toLowerCase().split('.').pop();
     const allowedExtensions = ['mp3', 'wav', 'm4a', 'aac', 'ogg', 'flac', 'pdf', 'txt', 'doc', 'docx'];
@@ -61,7 +89,6 @@ const upload = multer({
     if (allowedMimes.includes(file.mimetype) || allowedExtensions.includes(fileExtension)) {
       cb(null, true);
     } else {
-      console.log('File rejected:', { mimetype: file.mimetype, extension: fileExtension });
       cb(new Error('Invalid file type. Only audio files and documents are allowed.'), false);
     }
   }
@@ -168,7 +195,18 @@ router.post('/audio', upload.single('audioFile'), [
       });
     }
 
-    const demoUser = await getDemoUser();
+    // Get user data from request
+    const userData = getUserDataFromRequest(req);
+    
+    // Use provided user data or fall back to demo user
+    let userId;
+    if (userData.userId) {
+      userId = userData.userId;
+    } else {
+      const demoUser = await getDemoUser();
+      userId = demoUser._id;
+    }
+    
     const { additionalUrl, additionalDocument, analysisType = 'comprehensive' } = req.body;
     
     // Prepare additional content
@@ -183,17 +221,21 @@ router.post('/audio', upload.single('audioFile'), [
       fileName: req.file.originalname,
       fileSize: req.file.size,
       analysisType,
-      hasAdditionalContent: !!additionalContent
+      hasAdditionalContent: !!additionalContent,
+      userId: userId,
+      userEmail: userData.email,
+      companyId: userData.companyId
     });
 
     // Process audio file using the new audio analysis service
     const analysis = await audioAnalysisService.processAudioAnalysis(
       req.file,
-      demoUser._id,
+      userId,
       {
         additionalContent,
         websiteUrl: additionalUrl,
-        analysisType
+        analysisType,
+        userData: userData
       }
     );
 
@@ -225,7 +267,7 @@ router.post('/audio', upload.single('audioFile'), [
     res.status(500).json({
       success: false,
       message: error.message || 'Failed to process audio analysis',
-      error: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      error: config.isDevelopment ? error.stack : undefined
     });
   }
 });
@@ -244,7 +286,18 @@ router.post('/fathom', [
       });
     }
 
-    const demoUser = await getDemoUser();
+    // Get user data from request
+    const userData = getUserDataFromRequest(req);
+    
+    // Use provided user data or fall back to demo user
+    let userId;
+    if (userData.userId) {
+      userId = userData.userId;
+    } else {
+      const demoUser = await getDemoUser();
+      userId = demoUser._id;
+    }
+    
     const { url, additionalUrl, additionalDocument } = req.body;
     let additionalContent = null;
 
@@ -254,10 +307,18 @@ router.post('/fathom', [
       additionalContent = { type: 'document', file: additionalDocument };
     }
 
+    logger.info('Starting Fathom analysis', {
+      url,
+      userId: userId,
+      userEmail: userData.email,
+      companyId: userData.companyId
+    });
+
     const analysis = await fathomService.processFathomCall(
       url,
-      demoUser._id,
-      additionalContent
+      userId,
+      additionalContent,
+      userData
     );
 
     res.status(201).json({
@@ -332,7 +393,18 @@ router.post('/transcript', [
       });
     }
 
-    const demoUser = await getDemoUser();
+    // Get user data from request
+    const userData = getUserDataFromRequest(req);
+    
+    // Use provided user data or fall back to demo user
+    let userId;
+    if (userData.userId) {
+      userId = userData.userId;
+    } else {
+      const demoUser = await getDemoUser();
+      userId = demoUser._id;
+    }
+    
     const { transcript, additionalUrl, additionalDocument } = req.body;
     let additionalContent = null;
 
@@ -342,10 +414,18 @@ router.post('/transcript', [
       additionalContent = { type: 'document', file: additionalDocument };
     }
 
+    logger.info('Starting transcript analysis', {
+      transcriptLength: transcript.length,
+      userId: userId,
+      userEmail: userData.email,
+      companyId: userData.companyId
+    });
+
     const analysis = await transcriptService.processTranscriptCall(
       transcript,
-      demoUser._id,
-      additionalContent
+      userId,
+      additionalContent,
+      userData
     );
 
     res.status(201).json({

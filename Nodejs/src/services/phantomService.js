@@ -1,4 +1,4 @@
-const playwright = require('playwright');
+const playwrightService = require('./playwrightService');
 const llmService = require('./llmService');
 const FileUtils = require('../utils/fileUtils');
 const Analysis = require('../models/Analysis');
@@ -7,12 +7,18 @@ const logger = require('../utils/logger');
 class PhantomService {
   async processPhantomCall(url, userId, additionalContent = null) {
     let analysis = null;
-    let browser = null;
 
     try {
+      // Create user object from session data only (no database queries)
+      const userObject = userId ? {
+        email: null,
+        userId: userId,
+        companyId: null
+      } : null;
+
       // Create analysis record
       analysis = new Analysis({
-        userId,
+        user: userObject,
         serviceType: 'phantom',
         status: 'processing',
         input: {
@@ -101,33 +107,22 @@ class PhantomService {
       }
 
       throw error;
-    } finally {
-      if (browser) {
-        await browser.close();
-      }
     }
   }
 
   async extractTranscriptFromUrl(url) {
-    let browser = null;
+    let browserInstance = null;
     
     try {
-      // Launch browser
-      browser = await playwright.chromium.launch({
-        headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox']
+      // Launch browser using centralized service
+      browserInstance = await playwrightService.launchScrapingBrowser({
+        identifier: `phantom-${Date.now()}`
       });
 
-      const context = await browser.newContext({
-        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-      });
+      const { page } = browserInstance;
 
-      const page = await context.newPage();
-
-      // Navigate to URL
+      // Navigate to URL and get content
       await page.goto(url, { waitUntil: 'networkidle' });
-
-      // Wait for content to load
       await page.waitForTimeout(2000);
 
       // Extract transcript using various selectors
@@ -217,8 +212,8 @@ class PhantomService {
       logger.error('Failed to extract transcript from URL:', error);
       throw new Error(`Failed to extract transcript from URL: ${error.message}`);
     } finally {
-      if (browser) {
-        await browser.close();
+      if (browserInstance) {
+        await playwrightService.closeBrowser(browserInstance.identifier);
       }
     }
   }

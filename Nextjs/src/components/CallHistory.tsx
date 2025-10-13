@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -25,64 +25,144 @@ import {
   Lightbulb
 } from 'lucide-react'
 import { Analysis } from '@/types/analysis'
-import { formatText, toPlainText } from '@/utils/textFormatter'
+import { formatText, toPlainText, getAnalysisTitle } from '@/utils/textFormatter'
+import { AuthorizationMessage } from './AuthorizationMessage'
+import { apiUrl } from '@/config/frontend-config'
 
 interface CallHistoryProps {
   onAnalysisSelect: (analysis: Analysis) => void
   onAnalysisDelete: (analysisId: string) => void
+  onDeleteClick: (analysisId: string) => void
+  onAnalysisDeleted: (analysisId: string) => void
+  deletedAnalysisId: string | null
+  user?: any // User data from session
 }
 
-export function CallHistory({ onAnalysisSelect, onAnalysisDelete }: CallHistoryProps) {
-  const [analyses, setAnalyses] = useState<Analysis[]>([])
+export function CallHistory({ onAnalysisSelect, onAnalysisDelete, onDeleteClick, onAnalysisDeleted, deletedAnalysisId, user }: CallHistoryProps) {
+  const [allAnalyses, setAllAnalyses] = useState<Analysis[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
   const [filterStatus, setFilterStatus] = useState<string>('all')
   const [filterService, setFilterService] = useState<string>('all')
   const [currentPage, setCurrentPage] = useState(1)
-  const [totalPages, setTotalPages] = useState(1)
+  const [itemsPerPage] = useState(10) // Set to 10 records per page for proper pagination
+  const [companyId, setCompanyId] = useState<string | null>(null)
+  const [totalPages, setTotalPages] = useState(0)
   const [totalAnalyses, setTotalAnalyses] = useState(0)
+  const [searchDebounce, setSearchDebounce] = useState('')
+  const [isSearching, setIsSearching] = useState(false)
 
-  const fetchAnalyses = async (page = 1) => {
+  const fetchAnalyses = async () => {
     try {
       setLoading(true)
-      const response = await fetch(`http://localhost:5001/api/comprehensive/?page=${page}&limit=10`)
+      setIsSearching(true)
+      
+      // If no company ID, show empty results
+      if (!companyId) {
+        setAllAnalyses([])
+        setTotalPages(0)
+        setTotalAnalyses(0)
+        return
+      }
+      
+      // Use server-side pagination and filtering
+      const params = new URLSearchParams({
+        page: currentPage.toString(),
+        limit: itemsPerPage.toString(),
+        companyId: companyId
+      })
+      
+      // Add search and filter parameters
+      if (searchDebounce.trim()) {
+        params.append('search', searchDebounce.trim())
+      }
+      if (filterStatus !== 'all') {
+        params.append('status', filterStatus)
+      }
+      if (filterService !== 'all') {
+        params.append('serviceType', filterService)
+      }
+      
+      const response = await fetch(`${apiUrl}/comprehensive/?${params}`)
       const data = await response.json()
       
       if (data.success) {
-        setAnalyses(data.data.analyses)
+        setAllAnalyses(data.data.analyses)
         setTotalPages(data.data.pagination.pages)
         setTotalAnalyses(data.data.pagination.total)
       }
     } catch (error) {
-      console.error('Failed to fetch analyses:', error)
+      // Error fetching analyses - silently handle
     } finally {
       setLoading(false)
+      setIsSearching(false)
     }
   }
 
+  // Set company ID from user prop
   useEffect(() => {
-    fetchAnalyses(currentPage)
-  }, [currentPage])
-
-  const handleDelete = async (analysisId: string) => {
-    if (!confirm('Are you sure you want to delete this analysis?')) return
-
-    try {
-      const response = await fetch(`http://localhost:5001/api/comprehensive/${analysisId}`, {
-        method: 'DELETE'
-      })
-      
-      if (response.ok) {
-        setAnalyses(prev => prev.filter(a => a._id !== analysisId))
-        onAnalysisDelete(analysisId)
-      }
-    } catch (error) {
-      console.error('Failed to delete analysis:', error)
+    if (user && user.companyId) {
+      setCompanyId(user.companyId)
+    } else {
+      setCompanyId(null)
     }
+  }, [user])
+
+  // No more client-side filtering - server handles everything
+
+  // Debounce search term with longer delay for better performance
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      // Only search if term is empty or has at least 2 characters
+      if (searchTerm === '' || searchTerm.length >= 2) {
+        setSearchDebounce(searchTerm)
+      }
+    }, 800) // 800ms delay to reduce API calls
+
+    return () => clearTimeout(timer)
+  }, [searchTerm])
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [searchDebounce, filterStatus, filterService])
+
+  // Fetch analyses when companyId, page, or filters change
+  useEffect(() => {
+    if (companyId) {
+      fetchAnalyses()
+    }
+  }, [companyId, currentPage, searchDebounce, filterStatus, filterService])
+
+  // Handle deletion notification from parent component
+  useEffect(() => {
+    if (deletedAnalysisId) {
+      // Remove the deleted analysis from the list
+      setAllAnalyses(prev => prev.filter(a => a._id !== deletedAnalysisId))
+      
+      // Update total count
+      setTotalAnalyses(prev => Math.max(0, prev - 1))
+      
+      // Recalculate total pages
+      const newTotalPages = Math.ceil(Math.max(0, totalAnalyses - 1) / itemsPerPage)
+      setTotalPages(newTotalPages)
+      
+      // Adjust current page if needed
+      if (currentPage > newTotalPages && newTotalPages > 0) {
+        setCurrentPage(newTotalPages)
+      }
+      
+      // Notify parent that we've processed the deletion
+      onAnalysisDeleted(deletedAnalysisId)
+    }
+  }, [deletedAnalysisId, totalAnalyses, itemsPerPage, currentPage, onAnalysisDeleted])
+
+  const handleDeleteClick = (analysisId: string) => {
+    onDeleteClick(analysisId)
   }
 
   const handleRefresh = () => {
-    fetchAnalyses(currentPage)
+    fetchAnalyses()
   }
 
   const getServiceIcon = (serviceType: string) => {
@@ -129,17 +209,10 @@ export function CallHistory({ onAnalysisSelect, onAnalysisDelete }: CallHistoryP
   }
 
 
-  const filteredAnalyses = analyses.filter(analysis => {
-    const matchesSearch = searchTerm === '' || 
-      analysis.input?.fathomUrl?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      analysis.input?.transcript?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      analysis.input?.audioFile?.originalName?.toLowerCase().includes(searchTerm.toLowerCase())
-    
-    const matchesStatus = filterStatus === 'all' || analysis.status === filterStatus
-    const matchesService = filterService === 'all' || analysis.serviceType === filterService
-    
-    return matchesSearch && matchesStatus && matchesService
-  })
+  // Calculate pagination display
+  const startIndex = (currentPage - 1) * itemsPerPage
+  const endIndex = Math.min(startIndex + itemsPerPage, totalAnalyses)
+  const currentPageAnalyses = allAnalyses // Server already returns the correct page
 
   if (loading) {
     return (
@@ -150,6 +223,14 @@ export function CallHistory({ onAnalysisSelect, onAnalysisDelete }: CallHistoryP
         </div>
       </div>
     )
+  }
+
+  // Show authorization message if no company ID
+  // TEMPORARY: Add this line to force show AuthorizationMessage for testing
+  // if (true) return <AuthorizationMessage />
+  
+  if (!companyId) {
+    return <AuthorizationMessage />
   }
 
   return (
@@ -180,7 +261,7 @@ export function CallHistory({ onAnalysisSelect, onAnalysisDelete }: CallHistoryP
               <div>
                 <p className="text-sm font-medium text-green-600">Completed</p>
                 <p className="text-2xl font-bold text-green-700">
-                  {analyses.filter(a => a.status === 'completed').length}
+                  {allAnalyses.filter(a => a.status === 'completed').length}
                 </p>
               </div>
               <TrendingUp className="w-8 h-8 text-green-500" />
@@ -194,8 +275,8 @@ export function CallHistory({ onAnalysisSelect, onAnalysisDelete }: CallHistoryP
               <div>
                 <p className="text-sm font-medium text-purple-600">Avg Rating</p>
                 <p className="text-2xl font-bold text-purple-700">
-                  {analyses.length > 0 
-                    ? (analyses.reduce((sum, a) => sum + (a.results?.callRating || 0), 0) / analyses.length).toFixed(1)
+                  {allAnalyses.length > 0 
+                    ? (allAnalyses.reduce((sum, a) => sum + (a.results?.callRating || 0), 0) / allAnalyses.length).toFixed(1)
                     : '0.0'
                   }
                 </p>
@@ -211,7 +292,7 @@ export function CallHistory({ onAnalysisSelect, onAnalysisDelete }: CallHistoryP
               <div>
                 <p className="text-sm font-medium text-amber-600">Total Insights</p>
                 <p className="text-2xl font-bold text-amber-700">
-                  {analyses.reduce((sum, a) => sum + (a.results?.keyInsights?.length || 0), 0)}
+                  {allAnalyses.reduce((sum, a) => sum + (a.results?.keyInsights?.length || 0), 0)}
                 </p>
               </div>
               <Lightbulb className="w-8 h-8 text-amber-500" />
@@ -221,71 +302,91 @@ export function CallHistory({ onAnalysisSelect, onAnalysisDelete }: CallHistoryP
 
       </div>
 
-      {/* Filters */}
+      {/* Search and Filters */}
       <Card>
         <CardContent className="p-4">
-          <div className="flex flex-col md:flex-row gap-4">
-            <div className="flex-1">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                <Input
-                  placeholder="Search analyses..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10"
-                />
+          <div className="space-y-4">
+            {/* Search Bar */}
+            <div className="flex flex-col md:flex-row gap-4">
+              <div className="flex-1">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                  <Input
+                    placeholder="Search by type, status, rating, file names..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="pl-10"
+                    disabled={isSearching}
+                  />
+                  {isSearching && (
+                    <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                      <RefreshCw className="w-4 h-4 animate-spin text-blue-500" />
+                    </div>
+                  )}
+                  {!isSearching && searchTerm && (
+                    <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-xs text-gray-500">
+                      {totalAnalyses} result{totalAnalyses !== 1 ? 's' : ''}
+                    </div>
+                  )}
+                </div>
+              </div>
+              
+              <div className="flex gap-2">
+                <select
+                  value={filterStatus}
+                  onChange={(e) => setFilterStatus(e.target.value)}
+                  className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="all">All Status</option>
+                  <option value="completed">Completed</option>
+                  <option value="processing">Processing</option>
+                  <option value="failed">Failed</option>
+                </select>
+                
+                <select
+                  value={filterService}
+                  onChange={(e) => setFilterService(e.target.value)}
+                  className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="all">All Services</option>
+                  <option value="audio">Audio</option>
+                  <option value="fathom">Fathom</option>
+                  <option value="transcript">Transcript</option>
+                </select>
+                
+                <Button onClick={handleRefresh} variant="outline" size="sm">
+                  <RefreshCw className="w-4 h-4 mr-2" />
+                  Refresh
+                </Button>
               </div>
             </div>
-            
-            <div className="flex gap-2">
-              <select
-                value={filterStatus}
-                onChange={(e) => setFilterStatus(e.target.value)}
-                className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="all">All Status</option>
-                <option value="completed">Completed</option>
-                <option value="processing">Processing</option>
-                <option value="failed">Failed</option>
-              </select>
-              
-              <select
-                value={filterService}
-                onChange={(e) => setFilterService(e.target.value)}
-                className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="all">All Services</option>
-                <option value="audio">Audio</option>
-                <option value="fathom">Fathom</option>
-                <option value="transcript">Transcript</option>
-              </select>
-              
-              <Button onClick={handleRefresh} variant="outline" size="sm">
-                <RefreshCw className="w-4 h-4 mr-2" />
-                Refresh
-              </Button>
-            </div>
+
           </div>
         </CardContent>
       </Card>
 
+
       {/* Analyses List */}
       <div className="space-y-4">
-        {filteredAnalyses.length === 0 ? (
+        {currentPageAnalyses.length === 0 ? (
           <Card>
             <CardContent className="p-8 text-center">
               <BarChart3 className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">No analyses found</h3>
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                {!companyId ? 'Authentication Required' : 'No analyses found'}
+              </h3>
               <p className="text-gray-500">
-                {searchTerm || filterStatus !== 'all' || filterService !== 'all'
-                  ? 'Try adjusting your filters or search terms'
-                  : 'Start by running your first analysis'
+                {!companyId 
+                  ? 'Please log in to view your analysis history'
+                  : totalAnalyses === 0
+                    ? 'No analyses found matching your criteria'
+                    : 'Start by running your first analysis'
                 }
               </p>
             </CardContent>
           </Card>
         ) : (
-          filteredAnalyses.map((analysis) => (
+          currentPageAnalyses.map((analysis) => (
             <Card key={analysis._id} className="hover:shadow-md transition-shadow">
               <CardContent className="p-6">
                 <div className="flex items-start justify-between">
@@ -312,17 +413,8 @@ export function CallHistory({ onAnalysisSelect, onAnalysisDelete }: CallHistoryP
 
                     <div className="space-y-2 mb-4">
                       <h3 className="font-semibold text-gray-900 truncate">
-                        {analysis.input?.fathomUrl || 
-                         analysis.input?.audioFile?.originalName || 
-                         'Transcript Analysis'}
+                        {getAnalysisTitle(analysis)}
                       </h3>
-                      
-                      <div 
-                        className="text-sm text-gray-600 line-clamp-2 prose prose-sm max-w-none"
-                        dangerouslySetInnerHTML={{ 
-                          __html: formatText(analysis.results?.summary || 'Analysis in progress...')
-                        }}
-                      />
                     </div>
 
                     <div className="flex items-center gap-4 text-sm text-gray-500">
@@ -374,7 +466,7 @@ export function CallHistory({ onAnalysisSelect, onAnalysisDelete }: CallHistoryP
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => handleDelete(analysis._id)}
+                      onClick={() => handleDeleteClick(analysis._id)}
                       className="text-red-600 hover:text-red-700 hover:bg-red-50"
                     >
                       <Trash2 className="w-4 h-4" />
@@ -389,43 +481,103 @@ export function CallHistory({ onAnalysisSelect, onAnalysisDelete }: CallHistoryP
 
       {/* Pagination */}
       {totalPages > 1 && (
-        <div className="flex items-center justify-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-            disabled={currentPage === 1}
-          >
-            <ChevronLeft className="w-4 h-4 mr-1" />
-            Previous
-          </Button>
-          
-          <div className="flex items-center gap-1">
-            {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-              const page = i + 1
-              return (
-                <Button
-                  key={page}
-                  variant={currentPage === page ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setCurrentPage(page)}
-                  className="w-8 h-8 p-0"
-                >
-                  {page}
-                </Button>
-              )
-            })}
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="text-sm text-gray-500">
+            Showing {startIndex + 1} to {Math.min(endIndex, totalAnalyses)} of {totalAnalyses} results
           </div>
           
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-            disabled={currentPage === totalPages}
-          >
-            Next
-            <ChevronRight className="w-4 h-4 ml-1" />
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+              disabled={currentPage === 1}
+            >
+              <ChevronLeft className="w-4 h-4 mr-1" />
+              Previous
+            </Button>
+            
+            <div className="flex items-center gap-1">
+              {(() => {
+                const pages = []
+                const maxVisiblePages = 5
+                let startPage = Math.max(1, currentPage - Math.floor(maxVisiblePages / 2))
+                let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1)
+                
+                // Adjust start page if we're near the end
+                if (endPage - startPage + 1 < maxVisiblePages) {
+                  startPage = Math.max(1, endPage - maxVisiblePages + 1)
+                }
+                
+                // Add first page and ellipsis if needed
+                if (startPage > 1) {
+                  pages.push(
+                    <Button
+                      key={1}
+                      variant={currentPage === 1 ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setCurrentPage(1)}
+                      className="w-8 h-8 p-0"
+                    >
+                      1
+                    </Button>
+                  )
+                  if (startPage > 2) {
+                    pages.push(
+                      <span key="ellipsis1" className="px-2 text-gray-500">...</span>
+                    )
+                  }
+                }
+                
+                // Add visible pages
+                for (let i = startPage; i <= endPage; i++) {
+                  pages.push(
+                    <Button
+                      key={i}
+                      variant={currentPage === i ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setCurrentPage(i)}
+                      className="w-8 h-8 p-0"
+                    >
+                      {i}
+                    </Button>
+                  )
+                }
+                
+                // Add last page and ellipsis if needed
+                if (endPage < totalPages) {
+                  if (endPage < totalPages - 1) {
+                    pages.push(
+                      <span key="ellipsis2" className="px-2 text-gray-500">...</span>
+                    )
+                  }
+                  pages.push(
+                    <Button
+                      key={totalPages}
+                      variant={currentPage === totalPages ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setCurrentPage(totalPages)}
+                      className="w-8 h-8 p-0"
+                    >
+                      {totalPages}
+                    </Button>
+                  )
+                }
+                
+                return pages
+              })()}
+            </div>
+            
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+              disabled={currentPage === totalPages}
+            >
+              Next
+              <ChevronRight className="w-4 h-4 ml-1" />
+            </Button>
+          </div>
         </div>
       )}
     </div>

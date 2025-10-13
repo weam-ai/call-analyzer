@@ -92,3 +92,31 @@ export function truncateText(text: string, maxLength: number = 200): string {
   if (!text || text.length <= maxLength) return text;
   return text.substring(0, maxLength).trim() + '...';
 }
+
+/**
+ * Generates a proper title for analysis based on service type and input
+ */
+export function getAnalysisTitle(analysis: any): string {
+  const { serviceType, input } = analysis;
+  
+  // If there's a specific input name, combine with analysis type
+  if (input?.fathomUrl) {
+    return `Fathom Analysis - ${input.fathomUrl}`;
+  }
+  
+  if (input?.audioFile?.originalName) {
+    return `Audio Call Analysis - ${input.audioFile.originalName}`;
+  }
+  
+  // Fallback based on service type
+  switch (serviceType) {
+    case 'audio':
+      return 'Audio Call Analysis';
+    case 'transcript':
+      return 'Transcript Analysis';
+    case 'fathom':
+      return 'Fathom Analysis';
+    default:
+      return 'Call Analysis';
+  }
+}

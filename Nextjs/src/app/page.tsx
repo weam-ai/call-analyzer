@@ -1,117 +1,18 @@
-'use client'
+import { getSession } from '@/config/withSession'
+import { AuthorizationMessage } from '@/components/AuthorizationMessage'
+import { HomeClient } from '../components/HomeClient'
 
-import { useState } from 'react'
-import { Button } from '@/components/ui/button'
-import { ComprehensiveAnalysisWizard } from '@/components/ComprehensiveAnalysisWizard'
-import { ComprehensiveAnalysisResults } from '@/components/ComprehensiveAnalysisResults'
-import { CallHistory } from '@/components/CallHistory'
-import { Analysis } from '@/types/analysis'
-import { BarChart3, TrendingUp, History, Plus, Home as HomeIcon } from 'lucide-react'
+export default async function Home() {
+  // Get session directly on server side like sessiontracker does
+  const session = await getSession()
+  const isAuthenticated = !!session.user
+  const user = session.user
 
-export default function Home() {
-  const [currentAnalysis, setCurrentAnalysis] = useState<Analysis | null>(null)
-  const [isAnalyzing, setIsAnalyzing] = useState(false)
-  const [currentView, setCurrentView] = useState<'wizard' | 'history'>('wizard')
-
-  const handleAnalysisStart = () => {
-    setIsAnalyzing(true)
+  // If not authenticated, show authorization message
+  if (!isAuthenticated) {
+    return <AuthorizationMessage />
   }
 
-  const handleAnalysisComplete = (analysis: Analysis) => {
-    setCurrentAnalysis(analysis)
-    setIsAnalyzing(false)
-  }
-
-  const handleAnalysisError = (error: string) => {
-    console.error('Analysis error:', error)
-    setIsAnalyzing(false)
-  }
-
-  const handleAnalysisSelect = (analysis: Analysis) => {
-    setCurrentAnalysis(analysis)
-    setCurrentView('wizard')
-  }
-
-  const handleAnalysisDelete = (analysisId: string) => {
-    if (currentAnalysis && currentAnalysis._id === analysisId) {
-      setCurrentAnalysis(null)
-    }
-  }
-
-  const handleNewAnalysis = () => {
-    setCurrentAnalysis(null)
-    setCurrentView('wizard')
-  }
-
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
-      {/* Header */}
-      <header className="bg-white/80 backdrop-blur-sm border-b border-slate-200 sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 bg-gradient-to-r from-blue-600 to-purple-600 rounded-xl flex items-center justify-center">
-                <BarChart3 className="w-6 h-6 text-white" />
-              </div>
-              <div>
-                <h1 className="text-xl font-bold text-slate-900">Sales Call Analyzer</h1>
-                <p className="text-xs text-slate-500">AI-Powered Analytics</p>
-              </div>
-            </div>
-            <div className="flex items-center space-x-4">
-              <div className="flex items-center gap-2">
-                <Button
-                  variant={currentView === 'wizard' ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={handleNewAnalysis}
-                  className="flex items-center gap-2"
-                >
-                  <HomeIcon className="w-4 h-4" />
-                  <span className="hidden sm:inline">+ New Analysis</span>
-                </Button>
-                <Button
-                  variant={currentView === 'history' ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => setCurrentView('history')}
-                  className="flex items-center gap-2"
-                >
-                  <History className="w-4 h-4" />
-                  <span className="hidden sm:inline">Call History</span>
-                </Button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {currentView === 'wizard' ? (
-          <>
-            {!currentAnalysis ? (
-        <ComprehensiveAnalysisWizard
-          onAnalysisComplete={handleAnalysisComplete}
-          onAnalysisError={handleAnalysisError}
-          isAnalyzing={isAnalyzing}
-          onAnalysisStart={handleAnalysisStart}
-        />
-            ) : (
-              /* Analysis Results */
-              <ComprehensiveAnalysisResults 
-                analysis={currentAnalysis} 
-                onGoHome={handleNewAnalysis}
-              />
-            )}
-          </>
-        ) : (
-          /* Call History */
-          <CallHistory
-            onAnalysisSelect={handleAnalysisSelect}
-            onAnalysisDelete={handleAnalysisDelete}
-          />
-        )}
-      </main>
-
-    </div>
-  )
+  // Pass user data to client component
+  return <HomeClient user={user} />
 }

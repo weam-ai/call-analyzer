@@ -382,14 +382,6 @@ ${transcript}
       
       const correctMimeType = getMimeType(audioFile.originalname, audioFile.mimetype);
       
-      console.log('Audio transcription:', {
-        originalName: audioFile.originalname,
-        originalMimeType: audioFile.mimetype,
-        correctedMimeType: correctMimeType,
-        bufferSize: audioFile.buffer ? audioFile.buffer.length : 'No buffer',
-        hasBuffer: !!audioFile.buffer
-      });
-      
       // Check if audio file has content
       if (!audioFile.buffer || audioFile.buffer.length === 0) {
         throw new Error('Audio file is empty or invalid');
@@ -435,41 +427,62 @@ ${transcript}
     try {
       const startTime = Date.now();
       
+      // Use LLM directly to extract and analyze content from the URL
+      logger.info('Extracting URL content using LLM', { url });
+      
       const prompt = `
-Extract the transcript or conversation content from this URL: ${url}
+You are analyzing a website to extract product and service information.
 
-Look for:
-1. Meeting transcripts
-2. Call recordings with text
-3. Interview transcripts
-4. Conversation logs
-5. Chat logs
-6. Any text content that represents spoken conversation
+Website URL: ${url}
 
-Return only the transcript text, formatted clearly with speaker identification if available.
+Please analyze this website URL and provide comprehensive information about:
+1. Company Overview - What does this company do?
+2. All products and services offered
+3. Key features and benefits of each product/service
+4. Pricing information if available
+5. Target audience or customer segments
+6. Unique value propositions
+7. Any technical specifications or requirements
+8. Integration capabilities or partnerships
+
+Provide a detailed, structured summary of the company's offerings that can be used to analyze if these were discussed during a sales call.
+
+Format the response as clear, structured text with sections for:
+- Company Overview
+- Products and Services
+- Key Features and Benefits
+- Target Market
+- Value Propositions
+- Additional Relevant Information
+
+Be as detailed and comprehensive as possible based on what you know about this URL and company.
 `;
 
       const result = await this.model.generateContent(prompt);
       const response = await result.response;
-      const transcript = response.text();
+      const analyzedContent = response.text();
       
       const processingTime = Date.now() - startTime;
+      const wordCount = analyzedContent.split(/\s+/).length;
       
-      logger.info('URL transcript extraction completed', {
+      logger.info('URL content extraction completed using LLM', {
         url,
         processingTime: `${processingTime}ms`,
-        transcriptLength: transcript.length
+        contentLength: analyzedContent.length,
+        wordCount
       });
 
       return {
-        text: transcript,
+        text: analyzedContent,
         processingTime,
-        wordCount: transcript.split(/\s+/).length,
-        url
+        wordCount,
+        url,
+        title: 'Product/Service Information',
+        description: 'Extracted using LLM analysis'
       };
     } catch (error) {
-      logger.error('URL transcript extraction failed:', error);
-      throw new Error(`Transcript extraction failed: ${error.message}`);
+      logger.error('URL content extraction failed:', error);
+      throw new Error(`Content extraction failed: ${error.message}`);
     }
   }
 }

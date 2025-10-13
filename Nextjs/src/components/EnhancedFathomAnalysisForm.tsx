@@ -20,6 +20,7 @@ import {
   Info
 } from 'lucide-react'
 import { Analysis } from '@/types/analysis'
+import { apiUrl } from '@/config/frontend-config'
 
 interface EnhancedFathomAnalysisFormProps {
   onAnalysisStart: () => void
@@ -70,7 +71,7 @@ export function EnhancedFathomAnalysisForm({
       onAnalysisStart()
       setError('')
 
-      const response = await fetch('http://localhost:5001/api/enhanced/fathom', {
+      const response = await fetch(`${apiUrl}/enhanced/fathom`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

@@ -1,14 +1,14 @@
-const playwright = require('playwright');
+const playwrightService = require('./playwrightService');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const cheerio = require('cheerio');
 const logger = require('../utils/logger');
 const Analysis = require('../models/Analysis');
 const User = require('../models/User');
+const config = require('../config/backend-config');
 
 class EnhancedFathomService {
   constructor() {
-    this.browser = null;
-    this.context = null;
+    this.browserInstance = null;
     this.page = null;
     this.genAI = null;
     this.model = null;
@@ -17,11 +17,11 @@ class EnhancedFathomService {
     this.analysis = null;
     this.user = null;
     this.config = {
-      scrollDelay: 2.0,
-      pageTimeout: 60000,
+      scrollDelay: 2.0, // Time to wait after scrolling for content to load
+      pageTimeout: 90000, // 90 seconds - increased to allow more time for slow pages
       userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36',
-      maxRetries: 3,
-      retryDelay: 1000,
+      maxRetries: 3, // Allow up to 3 retries for reliability
+      retryDelay: 1000, // 1 second between retries
       chunkSize: 5,
       maxTokenLimit: 4000
     };
@@ -33,14 +33,23 @@ class EnhancedFathomService {
   async initialize(analysisId, userId, options = {}) {
     try {
       this.analysis = await Analysis.findById(analysisId);
-      this.user = await User.findById(userId);
       
       if (!this.analysis) {
         throw new Error('Analysis not found');
       }
       
-      if (!this.user) {
-        throw new Error('User not found');
+      // Use session data directly (no database queries)
+      if (userId) {
+        // Create user object from session data
+        this.user = {
+          _id: userId,
+          userId: userId,
+          email: null,
+          companyId: null
+        };
+        logger.info('Using session user data for Fathom service', { userId });
+      } else {
+        logger.warn('No userId provided, continuing without user context');
       }
 
       // Initialize Google AI
@@ -63,7 +72,7 @@ class EnhancedFathomService {
    */
   async initializeLLM() {
     try {
-      const apiKey = process.env.GEMINI_API_KEY;
+      const apiKey = config.geminiApiKey;
       if (!apiKey) {
         throw new Error('GEMINI_API_KEY not found in environment variables');
       }
@@ -95,35 +104,27 @@ class EnhancedFathomService {
       userAgent = this.config.userAgent
     } = options;
 
+    // Ensure URL has proper protocol
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      url = `https://${url}`;
+    }
+
     let retryCount = 0;
     
     while (retryCount < this.config.maxRetries) {
       try {
         logger.info(`Attempting to extract transcript from Fathom URL (attempt ${retryCount + 1})`, { url });
         
-        // Launch browser
-        this.browser = await playwright.chromium.launch({
-          headless: true,
-          args: [
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage',
-            '--disable-accelerated-2d-canvas',
-            '--no-first-run',
-            '--no-zygote',
-            '--disable-gpu'
-          ]
+        // Launch browser using centralized service
+        this.browserInstance = await playwrightService.launchFathomBrowser({
+          identifier: `enhanced-fathom-${Date.now()}`,
+          contextOptions: {
+            userAgent,
+            ignoreHTTPSErrors: true
+          }
         });
 
-        // Create context
-        this.context = await this.browser.newContext({
-          userAgent,
-          viewport: { width: 1920, height: 1080 },
-          ignoreHTTPSErrors: true
-        });
-
-        // Create page
-        this.page = await this.context.newPage();
+        this.page = this.browserInstance.page;
         
         // Set timeout
         this.page.setDefaultTimeout(pageTimeout);
@@ -763,41 +764,44 @@ Daniel Nyberg: Yeah, sure. So I'm Daniel Nyberg on the VP of marketing at PlayGo
    * Scrape additional content from URL
    */
   async scrapeAdditionalContent(url) {
+    const startTime = Date.now();
+    
     try {
       if (!url) return '';
 
-      logger.info('Scraping additional content from URL', { url });
+      // Ensure URL has proper protocol
+      if (!url.startsWith('http://') && !url.startsWith('https://')) {
+        url = `https://${url}`;
+      }
 
-      const page = await this.context.newPage();
-      await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
-      await page.waitForTimeout(2000);
+      logger.info('Scraping additional content from URL using LLM', { url });
 
-      const content = await page.evaluate(() => {
-        // Remove script and style elements
-        const scripts = document.querySelectorAll('script, style, nav, header, footer, aside');
-        scripts.forEach(el => el.remove());
-
-        // Get main content
-        const mainContent = document.querySelector('main, article, .content, #content') || document.body;
-        return mainContent.textContent?.trim() || '';
+      const llmService = require('./llmService');
+      const result = await llmService.extractTranscriptFromUrl(url);
+      
+      const processingTime = Date.now() - startTime;
+      logger.info('ENHANCED FATHOM SERVICE: URL content extraction successful', {
+        url,
+        contentLength: result.text?.length,
+        wordCount: result.wordCount,
+        processingTime: `${processingTime}ms`
       });
 
-      // Get page title before closing the page
-      const pageTitle = await page.title();
-      await page.close();
-
-      const wordCount = content.split(/\s+/).length;
-      logger.info('Additional content scraped successfully', { url, wordCount });
-
       return {
-        text: content,
+        text: result.text || '',
         url,
-        title: pageTitle,
-        wordCount
+        title: result.title || '',
+        wordCount: result.wordCount || 0
       };
 
     } catch (error) {
-      logger.error('Failed to scrape additional content:', error);
+      const processingTime = Date.now() - startTime;
+      logger.error('Failed to scrape additional content using LLM:', {
+        error: error.message,
+        errorStack: error.stack,
+        url,
+        processingTime: `${processingTime}ms`
+      });
       return '';
     }
   }
@@ -862,9 +866,31 @@ Based on the website content and call transcript, please analyze the call that t
 Provide a detailed evaluation of the call, including demographic details of the prospect, sales team performance metrics, and actionable recommendations for improvement. 
 Include an overall effectiveness score on a scale of 1 to 10 reflecting the quality and success of the sales team's performance.
 Include a breakdown of strengths, weaknesses, and suggestions for enhancing the sales strategy.
-based on the Page Analysis, sales person forgot which product or service he forgot to mention to client in call:
+Based on the Page Analysis, identify which products or services the salesperson forgot to mention to the client during the call.
 
-Note:- Provide only the evaluation without any additional or miscellaneous information.
+**IMPORTANT FORMATTING REQUIREMENTS:**
+1. The callDescription should be a brief 2-3 sentence overview of the call's purpose and participants
+2. The summary should contain the DETAILED call analysis organized into clear sections:
+   - Opening & Discovery
+   - Solution Presentation  
+   - Closing & Next Steps
+   - Overall Assessment
+3. Each section should have 2-4 short, clear paragraphs (each paragraph should be a single line/sentence that can be displayed as a bullet point)
+4. Do NOT duplicate content between callDescription and summary
+5. Do NOT repeat section headers multiple times
+6. Format the summary with clear section breaks using markdown headers (##)
+7. Write concise, scannable content - each point should be a complete thought in 1-2 sentences
+
+**CRITICAL JSON FORMAT EXAMPLE:**
+{
+  "callDescription": "Sales call between Unlimited WP (Anand Soni, Ronik P.) and Positive Medium (Chris Basham) to discuss SEO services partnership. Chris sought better SEO solutions for his web design agency clients.",
+  "summary": "## Opening & Discovery\\n\\nChris introduced Positive Medium, a web design agency operating since 2012, now full-time since 2022.\\n\\nThe team consists of Chris, his wife, their child, with contractors in Nepal and Pakistan.\\n\\nChris expressed dissatisfaction with current SEO provider Alphasio, citing quality issues and constant oversight needs.\\n\\nChris needs comprehensive SEO services (on-page, technical, off-page) with customized strategies for entertainment industry clients.\\n\\n## Solution Presentation\\n\\nUnlimited WP presented their customized SEO approach based on client needs and goals.\\n\\nThey emphasized on-page and technical SEO as foundational before off-page strategies.\\n\\nOffered free SEO audit of Positive Medium's website to demonstrate capabilities.\\n\\nShowcased various services including WordPress support, PPC, and design, though Chris focused on SEO.\\n\\n## Closing & Next Steps\\n\\nChris agreed to SEO audit of Positive Medium's website as a trial.\\n\\nUnlimited WP committed to providing audit results by end of week.\\n\\nFollow-up call scheduled for next Monday to discuss findings.\\n\\nAudit will include keyword research, mapping, on-page assessment, and technical assessment.\\n\\n## Overall Assessment\\n\\nCall successfully established potential partnership foundation.\\n\\nChris clearly articulated needs and pain points with current provider.\\n\\nFree SEO audit offer was strategic to demonstrate value and build trust.\\n\\nLikelihood of closing is moderately high (65%) pending audit outcome.",
+  "callRating": 7,
+  "callRatingBreakdown": {...},
+  "keyInsights": ["String insight 1", "String insight 2"],
+  "recommendations": ["String recommendation 1"],
+  ...
+}
 
 **CRITICAL: You must respond with valid JSON format. All scoring values (relevance, likelihood, revenueImpact) must be NUMERIC values between 1-5, not text like "Medium" or "High".**
 
@@ -951,28 +977,37 @@ Identify potential sales opportunities by:
      * Likelihood of conversion (1-5)
      * Potential revenue impact (1-5)
 ---
-Present the analysis in the following organized format:
-Give Little Description of the Call between both the parties
+**OUTPUT FORMAT:**
+The response must be a single JSON object with the following structure:
 
-#### 1. **Summary**
-- Provide a high-level overview of the call outcome (e.g., tone of call, progress in the sales journey, and overall impression of the interaction).
-#### 2. **Call Rating (1-10) with Detailed Breakdown**
+#### 1. **callDescription** (String)
+- A brief 2-3 sentence overview describing the call between both parties (who participated, what was discussed)
+
+#### 2. **summary** (String) 
+- A detailed analysis of the call outcome organized with clear markdown sections:
+  - ## Opening & Discovery (describe the opening phase)
+  - ## Solution Presentation (describe how solutions were presented)
+  - ## Closing & Next Steps (describe closing and agreed next steps)
+  - ## Overall Assessment (provide overall evaluation)
+- Do NOT repeat these sections elsewhere in the JSON
+
+#### 3. **Call Rating (1-10) with Detailed Breakdown** (callRating field in JSON)
 - Deliver a single numerical score summarizing the overall effectiveness of the call.
 - **MANDATORY: Include detailed scoring breakdown showing how the rating was calculated:**
   - **Engagement Quality (1-10):** How well did the sales rep engage the prospect? Did they ask good questions, listen actively, and maintain interest? (1-3: Poor engagement, 4-6: Basic engagement, 7-8: Good engagement, 9-10: Exceptional engagement)
   - **Responsiveness (1-10):** How effectively did the sales rep address the prospect's questions and concerns? Were answers thorough and helpful? (1-3: Poor responses, 4-6: Basic responses, 7-8: Good responses, 9-10: Exceptional responses)
   - **Discovery Skills (1-10):** How well did the sales rep uncover the prospect's pain points, needs, and decision-making process? (1-3: No discovery, 4-6: Basic discovery, 7-8: Good discovery, 9-10: Thorough discovery)
   - **Value Proposition (1-10):** How clearly and compellingly did the sales rep present the solution and its benefits? (1-3: No clear value, 4-6: Basic value prop, 7-8: Good value prop, 9-10: Compelling value prop)
-  - **Objection Handling (1-10):** How well did the sales rep handle any objections or concerns raised by the prospect? (Use 0 if no objections were raised) (1-3: Poor handling, 4-6: Basic handling, 7-8: Good handling, 9-10: Exceptional handling)
+  - **Objection Handling (1-10):** How well did the sales rep handle objections or address potential concerns? If objections were raised, rate the handling quality. If no objections arose, rate how proactively the rep addressed potential concerns and built trust. (1-3: Poor handling/no proactive addressing, 4-6: Basic handling/some proactive addressing, 7-8: Good handling/proactive addressing, 9-10: Exceptional handling/excellent trust building)
   - **Closing Attempts (1-10):** Did the sales rep attempt to move the conversation forward with next steps, demos, or closing questions? (1-3: No closing attempts, 4-6: Weak attempts, 7-8: Good attempts, 9-10: Strong closing)
   - **Follow-up Planning (1-10):** Was there a clear next step or follow-up planned? (1-3: No follow-up, 4-6: Vague follow-up, 7-8: Clear follow-up, 9-10: Detailed follow-up)
   - **Overall Call Flow (1-10):** How well-structured and professional was the overall conversation? (1-3: Poor flow, 4-6: Basic flow, 7-8: Good flow, 9-10: Excellent flow)
 
 **CRITICAL RATING CALCULATION RULES:**
-1. **ALL scores must be between 1-10 (no null values)**
+1. **ALL scores must be between 1-10 (no null values, no zeros)**
 2. **Calculate the average of all 8 scores**
 3. **Round to the nearest whole number for final rating**
-4. **Use 0 for objectionHandling only if NO objections were raised**
+4. **For objectionHandling: Always provide a score 1-10, even if no direct objections - rate proactive concern addressing**
 5. **Be realistic and varied in scoring - not every call is a 7/10**
 
 **Example Rating Calculation:**
@@ -980,11 +1015,11 @@ Give Little Description of the Call between both the parties
 - Responsiveness: 7/10  
 - Discovery Skills: 6/10
 - Value Proposition: 8/10
-- Objection Handling: 0/10 (no objections raised)
+- Objection Handling: 7/10 (proactively addressed potential concerns, built trust)
 - Closing Attempts: 9/10
 - Follow-up Planning: 8/10
 - Overall Call Flow: 7/10
-- **Average Score: (8+7+6+8+0+9+8+7)/8 = 6.125/10 → Final Rating: 6/10**
+- **Average Score: (8+7+6+8+7+9+8+7)/8 = 7.5/10 → Final Rating: 8/10**
 
 **Another Example (Poor Call):**
 - Engagement Quality: 3/10
@@ -1007,9 +1042,12 @@ Give Little Description of the Call between both the parties
 - Follow-up Planning: 9/10
 - Overall Call Flow: 9/10
 - **Average Score: (9+9+8+9+8+10+9+9)/8 = 8.75/10 → Final Rating: 9/10**
-#### 3. **Recommendations for Improvement**
-- List tailored suggestions to enhance sales tactics, address weaknesses, and build on strengths observed during the call. Ensure recommendations are actionable and specific (e.g., "Streamline responses to frequently asked questions about pricing").
-#### 4. **Key Insights**
+#### 4. **recommendations** (Array of Strings)
+- List tailored suggestions to enhance sales tactics, address weaknesses, and build on strengths observed during the call
+- Ensure recommendations are actionable and specific (e.g., "Streamline responses to frequently asked questions about pricing")
+- Each recommendation should be a separate string in the array
+
+#### 5. **keyInsights** (Array of Strings)
 Provide detailed notes on the following components:
 - **Demographic Information:** Include team size, work volume, location, business website, previous experiences, likelihood of closing, and business summary.
 - **Performance Evaluation:** Highlight aspects of responsiveness, prospect satisfaction, and engagement.
@@ -1018,7 +1056,8 @@ Provide detailed notes on the following components:
 **IMPORTANT: Format keyInsights as an array of strings, not objects.**
 **CORRECT:** "keyInsights": ["Prospect team is growing and needs better workflow management", "Pain points include task alignment and reporting efficiency"]
 **INCORRECT:** "keyInsights": [{"demographicInformation": "..."}, {"performanceEvaluation": "..."}]
-### 5. **Sales Opportunity Analysis**
+
+#### 6. **salesOpportunities** (Object) - Sales Opportunity Analysis
 Provide detailed notes on the following components:
 - **Product/Service Gap:** Identify products or services from the website that weren't discussed during the call.
 - **Upselling/Cross-selling Opportunities:** Highlight potential areas for upselling or cross-selling based on the prospect's needs and the website content.
@@ -1088,9 +1127,31 @@ Based on the website content and call transcript, please analyze the call that t
 Provide a detailed evaluation of the call, including demographic details of the prospect, sales team performance metrics, and actionable recommendations for improvement. 
 Include an overall effectiveness score on a scale of 1 to 10 reflecting the quality and success of the sales team's performance.
 Include a breakdown of strengths, weaknesses, and suggestions for enhancing the sales strategy.
-based on the Page Analysis, sales person forgot which product or service he forgot to mention to client in call:
+Based on the Page Analysis, identify which products or services the salesperson forgot to mention to the client during the call.
 
-Note:- Provide only the evaluation without any additional or miscellaneous information.
+**IMPORTANT FORMATTING REQUIREMENTS:**
+1. The callDescription should be a brief 2-3 sentence overview of the call's purpose and participants
+2. The summary should contain the DETAILED call analysis organized into clear sections:
+   - Opening & Discovery
+   - Solution Presentation  
+   - Closing & Next Steps
+   - Overall Assessment
+3. Each section should have 2-4 short, clear paragraphs (each paragraph should be a single line/sentence that can be displayed as a bullet point)
+4. Do NOT duplicate content between callDescription and summary
+5. Do NOT repeat section headers multiple times
+6. Format the summary with clear section breaks using markdown headers (##)
+7. Write concise, scannable content - each point should be a complete thought in 1-2 sentences
+
+**CRITICAL JSON FORMAT EXAMPLE:**
+{
+  "callDescription": "Sales call between Unlimited WP (Anand Soni, Ronik P.) and Positive Medium (Chris Basham) to discuss SEO services partnership. Chris sought better SEO solutions for his web design agency clients.",
+  "summary": "## Opening & Discovery\\n\\nChris introduced Positive Medium, a web design agency operating since 2012, now full-time since 2022.\\n\\nThe team consists of Chris, his wife, their child, with contractors in Nepal and Pakistan.\\n\\nChris expressed dissatisfaction with current SEO provider Alphasio, citing quality issues and constant oversight needs.\\n\\nChris needs comprehensive SEO services (on-page, technical, off-page) with customized strategies for entertainment industry clients.\\n\\n## Solution Presentation\\n\\nUnlimited WP presented their customized SEO approach based on client needs and goals.\\n\\nThey emphasized on-page and technical SEO as foundational before off-page strategies.\\n\\nOffered free SEO audit of Positive Medium's website to demonstrate capabilities.\\n\\nShowcased various services including WordPress support, PPC, and design, though Chris focused on SEO.\\n\\n## Closing & Next Steps\\n\\nChris agreed to SEO audit of Positive Medium's website as a trial.\\n\\nUnlimited WP committed to providing audit results by end of week.\\n\\nFollow-up call scheduled for next Monday to discuss findings.\\n\\nAudit will include keyword research, mapping, on-page assessment, and technical assessment.\\n\\n## Overall Assessment\\n\\nCall successfully established potential partnership foundation.\\n\\nChris clearly articulated needs and pain points with current provider.\\n\\nFree SEO audit offer was strategic to demonstrate value and build trust.\\n\\nLikelihood of closing is moderately high (65%) pending audit outcome.",
+  "callRating": 7,
+  "callRatingBreakdown": {...},
+  "keyInsights": ["String insight 1", "String insight 2"],
+  "recommendations": ["String recommendation 1"],
+  ...
+}
 
 **CRITICAL: You must respond with valid JSON format. All scoring values (relevance, likelihood, revenueImpact) must be NUMERIC values between 1-5, not text like "Medium" or "High".**
 
@@ -1177,28 +1238,37 @@ Identify potential sales opportunities by:
      * Likelihood of conversion (1-5)
      * Potential revenue impact (1-5)
 ---
-Present the analysis in the following organized format:
-Give Little Description of the Call between both the parties
+**OUTPUT FORMAT:**
+The response must be a single JSON object with the following structure:
 
-#### 1. **Summary**
-- Provide a high-level overview of the call outcome (e.g., tone of call, progress in the sales journey, and overall impression of the interaction).
-#### 2. **Call Rating (1-10) with Detailed Breakdown**
+#### 1. **callDescription** (String)
+- A brief 2-3 sentence overview describing the call between both parties (who participated, what was discussed)
+
+#### 2. **summary** (String) 
+- A detailed analysis of the call outcome organized with clear markdown sections:
+  - ## Opening & Discovery (describe the opening phase)
+  - ## Solution Presentation (describe how solutions were presented)
+  - ## Closing & Next Steps (describe closing and agreed next steps)
+  - ## Overall Assessment (provide overall evaluation)
+- Do NOT repeat these sections elsewhere in the JSON
+
+#### 3. **Call Rating (1-10) with Detailed Breakdown** (callRating field in JSON)
 - Deliver a single numerical score summarizing the overall effectiveness of the call.
 - **MANDATORY: Include detailed scoring breakdown showing how the rating was calculated:**
   - **Engagement Quality (1-10):** How well did the sales rep engage the prospect? Did they ask good questions, listen actively, and maintain interest? (1-3: Poor engagement, 4-6: Basic engagement, 7-8: Good engagement, 9-10: Exceptional engagement)
   - **Responsiveness (1-10):** How effectively did the sales rep address the prospect's questions and concerns? Were answers thorough and helpful? (1-3: Poor responses, 4-6: Basic responses, 7-8: Good responses, 9-10: Exceptional responses)
   - **Discovery Skills (1-10):** How well did the sales rep uncover the prospect's pain points, needs, and decision-making process? (1-3: No discovery, 4-6: Basic discovery, 7-8: Good discovery, 9-10: Thorough discovery)
   - **Value Proposition (1-10):** How clearly and compellingly did the sales rep present the solution and its benefits? (1-3: No clear value, 4-6: Basic value prop, 7-8: Good value prop, 9-10: Compelling value prop)
-  - **Objection Handling (1-10):** How well did the sales rep handle any objections or concerns raised by the prospect? (Use 0 if no objections were raised) (1-3: Poor handling, 4-6: Basic handling, 7-8: Good handling, 9-10: Exceptional handling)
+  - **Objection Handling (1-10):** How well did the sales rep handle objections or address potential concerns? If objections were raised, rate the handling quality. If no objections arose, rate how proactively the rep addressed potential concerns and built trust. (1-3: Poor handling/no proactive addressing, 4-6: Basic handling/some proactive addressing, 7-8: Good handling/proactive addressing, 9-10: Exceptional handling/excellent trust building)
   - **Closing Attempts (1-10):** Did the sales rep attempt to move the conversation forward with next steps, demos, or closing questions? (1-3: No closing attempts, 4-6: Weak attempts, 7-8: Good attempts, 9-10: Strong closing)
   - **Follow-up Planning (1-10):** Was there a clear next step or follow-up planned? (1-3: No follow-up, 4-6: Vague follow-up, 7-8: Clear follow-up, 9-10: Detailed follow-up)
   - **Overall Call Flow (1-10):** How well-structured and professional was the overall conversation? (1-3: Poor flow, 4-6: Basic flow, 7-8: Good flow, 9-10: Excellent flow)
 
 **CRITICAL RATING CALCULATION RULES:**
-1. **ALL scores must be between 1-10 (no null values)**
+1. **ALL scores must be between 1-10 (no null values, no zeros)**
 2. **Calculate the average of all 8 scores**
 3. **Round to the nearest whole number for final rating**
-4. **Use 0 for objectionHandling only if NO objections were raised**
+4. **For objectionHandling: Always provide a score 1-10, even if no direct objections - rate proactive concern addressing**
 5. **Be realistic and varied in scoring - not every call is a 7/10**
 
 **Example Rating Calculation:**
@@ -1206,11 +1276,11 @@ Give Little Description of the Call between both the parties
 - Responsiveness: 7/10  
 - Discovery Skills: 6/10
 - Value Proposition: 8/10
-- Objection Handling: 0/10 (no objections raised)
+- Objection Handling: 7/10 (proactively addressed potential concerns, built trust)
 - Closing Attempts: 9/10
 - Follow-up Planning: 8/10
 - Overall Call Flow: 7/10
-- **Average Score: (8+7+6+8+0+9+8+7)/8 = 6.125/10 → Final Rating: 6/10**
+- **Average Score: (8+7+6+8+7+9+8+7)/8 = 7.5/10 → Final Rating: 8/10**
 
 **Another Example (Poor Call):**
 - Engagement Quality: 3/10
@@ -1233,9 +1303,12 @@ Give Little Description of the Call between both the parties
 - Follow-up Planning: 9/10
 - Overall Call Flow: 9/10
 - **Average Score: (9+9+8+9+8+10+9+9)/8 = 8.75/10 → Final Rating: 9/10**
-#### 3. **Recommendations for Improvement**
-- List tailored suggestions to enhance sales tactics, address weaknesses, and build on strengths observed during the call. Ensure recommendations are actionable and specific (e.g., "Streamline responses to frequently asked questions about pricing").
-#### 4. **Key Insights**
+#### 4. **recommendations** (Array of Strings)
+- List tailored suggestions to enhance sales tactics, address weaknesses, and build on strengths observed during the call
+- Ensure recommendations are actionable and specific (e.g., "Streamline responses to frequently asked questions about pricing")
+- Each recommendation should be a separate string in the array
+
+#### 5. **keyInsights** (Array of Strings)
 Provide detailed notes on the following components:
 - **Demographic Information:** Include team size, work volume, location, business website, previous experiences, likelihood of closing, and business summary.
 - **Performance Evaluation:** Highlight aspects of responsiveness, prospect satisfaction, and engagement.
@@ -1244,7 +1317,8 @@ Provide detailed notes on the following components:
 **IMPORTANT: Format keyInsights as an array of strings, not objects.**
 **CORRECT:** "keyInsights": ["Prospect team is growing and needs better workflow management", "Pain points include task alignment and reporting efficiency"]
 **INCORRECT:** "keyInsights": [{"demographicInformation": "..."}, {"performanceEvaluation": "..."}]
-### 5. **Sales Opportunity Analysis**
+
+#### 6. **salesOpportunities** (Object) - Sales Opportunity Analysis
 Provide detailed notes on the following components:
 - **Product/Service Gap:** Identify products or services from the website that weren't discussed during the call.
 - **Upselling/Cross-selling Opportunities:** Highlight potential areas for upselling or cross-selling based on the prospect's needs and the website content.
@@ -1272,17 +1346,149 @@ Transcript: ${transcript}`;
    */
   parseAnalysisResponse(responseText) {
     try {
-      // Try to extract JSON from response
-      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        return JSON.parse(jsonMatch[0]);
+      // Try multiple strategies to extract and parse JSON
+      const strategies = [
+        // Strategy 1: Look for JSON in markdown code blocks with proper brace matching
+        () => {
+          // Find ```json start marker
+          const jsonStartMatch = responseText.match(/```json\s*/);
+          if (jsonStartMatch) {
+            const jsonStart = jsonStartMatch.index + jsonStartMatch[0].length;
+            const afterJsonStart = responseText.substring(jsonStart);
+            
+            // Find the first opening brace
+            const braceStart = afterJsonStart.indexOf('{');
+            if (braceStart !== -1) {
+              // Count braces to find matching closing brace
+              let braceCount = 0;
+              let endIndex = braceStart;
+              for (let i = braceStart; i < afterJsonStart.length; i++) {
+                if (afterJsonStart[i] === '{') braceCount++;
+                if (afterJsonStart[i] === '}') {
+                  braceCount--;
+                  if (braceCount === 0) {
+                    endIndex = i;
+                    break;
+                  }
+                }
+              }
+              if (endIndex > braceStart && braceCount === 0) {
+                return this.cleanJsonString(afterJsonStart.substring(braceStart, endIndex + 1));
+              }
+            }
+          }
+          return null;
+        },
+        // Strategy 2: Smart brace counting to find proper JSON boundaries
+        () => {
+          const startIndex = responseText.indexOf('{');
+          if (startIndex !== -1) {
+            let braceCount = 0;
+            let endIndex = startIndex;
+            for (let i = startIndex; i < responseText.length; i++) {
+              if (responseText[i] === '{') braceCount++;
+              if (responseText[i] === '}') braceCount--;
+              if (braceCount === 0) {
+                endIndex = i;
+                break;
+              }
+            }
+            if (endIndex > startIndex) {
+              return this.cleanJsonString(responseText.substring(startIndex, endIndex + 1));
+            }
+          }
+          return null;
+        },
+        // Strategy 3: Direct JSON extraction (fallback)
+        () => {
+          const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            return this.cleanJsonString(jsonMatch[0]);
+          }
+          return null;
+        }
+      ];
+
+      // Try each strategy
+      for (const strategy of strategies) {
+        try {
+          const jsonText = strategy();
+          if (jsonText) {
+            const parsed = JSON.parse(jsonText);
+            logger.info('Successfully parsed JSON using strategy', { 
+              strategy: strategies.indexOf(strategy) + 1,
+              jsonLength: jsonText.length
+            });
+            return parsed;
+          }
+        } catch (strategyError) {
+          // Continue to next strategy
+          continue;
+        }
       }
+
+      throw new Error('All JSON parsing strategies failed');
+
     } catch (error) {
-      logger.warn('Failed to parse JSON response, using fallback parser');
+      logger.warn('Failed to parse JSON response, using fallback parser', { 
+        error: error.message,
+        responsePreview: responseText.substring(0, 200)
+      });
     }
 
     // Fallback parsing
     return this.fallbackParse(responseText);
+  }
+
+  /**
+   * Clean JSON string to handle common parsing issues
+   */
+  cleanJsonString(jsonText) {
+    try {
+      // Remove code block markers
+      let cleaned = jsonText
+        .replace(/```json\s*/g, '')
+        .replace(/```\s*/g, '')
+        .trim();
+
+      // Try to find the JSON object boundaries more precisely
+      const startIndex = cleaned.indexOf('{');
+      const lastIndex = cleaned.lastIndexOf('}');
+      
+      if (startIndex !== -1 && lastIndex !== -1 && lastIndex > startIndex) {
+        cleaned = cleaned.substring(startIndex, lastIndex + 1);
+      }
+
+      // More aggressive cleaning for common issues
+      cleaned = cleaned
+        // Fix unescaped quotes in string values - more comprehensive
+        .replace(/"([^"]*)"([^"]*)"([^"]*)":/g, '"$1\\"$2\\"$3":')
+        .replace(/: "([^"]*)"([^"]*)"([^"]*)"/g, ': "$1\\"$2\\"$3"')
+        // Fix single quotes that should be escaped
+        .replace(/'/g, "\\'")
+        // Remove trailing commas
+        .replace(/,(\s*[}\]])/g, '$1')
+        // Fix newlines and carriage returns in string values
+        .replace(/"([^"]*)[\r\n]+([^"]*)"/g, '"$1\\n$2"')
+        // Fix other special characters that break JSON
+        .replace(/[\r\n\t]/g, ' ')
+        // Normalize whitespace
+        .replace(/\s+/g, ' ')
+        .trim();
+
+      // Try to validate the JSON structure
+      const testParse = JSON.parse(cleaned);
+      return cleaned;
+      
+    } catch (error) {
+      // If cleaning fails, return a more basic cleanup
+      return jsonText
+        .replace(/```json\s*/g, '')
+        .replace(/```\s*/g, '')
+        .replace(/,(\s*[}\]])/g, '$1')
+        .replace(/\s+/g, ' ')
+        .trim();
+    }
   }
 
   /**
@@ -1328,11 +1534,33 @@ Transcript: ${transcript}`;
   /**
    * Process Fathom call with enhanced features
    */
-  async processFathomCall(url, userId, additionalContent = null) {
+  async processFathomCall(url, userId, additionalContent = null, userData = null) {
     try {
-      // Create analysis record first
+      // Create user object from session data
+      let userObject = null;
+      if (userData && (userData.userId || userData.email)) {
+        // Use session user data if available
+        userObject = {
+          email: userData.email || null,
+          userId: userData.userId || null,
+          companyId: userData.companyId || null
+        };
+      } else {
+        // Fall back to demo user data from database
+        const User = require('../models/User');
+        const user = await User.findById(userId);
+        if (user) {
+          userObject = {
+            email: user.email || null,
+            userId: user._id || null,
+            companyId: user.companyId || null
+          };
+        }
+      }
+
+      // Create analysis record using user object
       this.analysis = new Analysis({
-        userId,
+        user: userObject,
         serviceType: 'fathom',
         status: 'processing',
         input: { url }
@@ -1406,7 +1634,16 @@ Transcript: ${transcript}`;
         processingTime: analysisResult.processingTime
       };
 
-      this.analysis.results = analysisResult.analysis;
+      // Ensure callDescription and summary are strings, not objects
+      const processedAnalysis = { ...analysisResult.analysis };
+      if (processedAnalysis.callDescription && typeof processedAnalysis.callDescription === 'object') {
+        processedAnalysis.callDescription = this.serializeCallDescription(processedAnalysis.callDescription);
+      }
+      if (processedAnalysis.summary && typeof processedAnalysis.summary === 'object') {
+        processedAnalysis.summary = this.serializeSummary(processedAnalysis.summary);
+      }
+
+      this.analysis.results = processedAnalysis;
       this.analysis.status = 'completed';
       this.analysis.metadata.completedAt = new Date();
       this.analysis.metadata.processingTime = analysisResult.processingTime;
@@ -1448,7 +1685,9 @@ Transcript: ${transcript}`;
   async processFathomUrlOnly(url, analysis, additionalContent = null) {
     try {
       // Initialize service without creating analysis record
-      await this.initialize(analysis._id, analysis.userId);
+      // Handle case where user might be null or userId might not exist
+      const userId = analysis.user?.userId || analysis.user?._id || null;
+      await this.initialize(analysis._id, userId);
 
       logger.info('Starting Fathom URL processing for comprehensive analysis', { 
         analysisId: analysis._id, 
@@ -1529,21 +1768,77 @@ Transcript: ${transcript}`;
    */
   async cleanupBrowser() {
     try {
-      if (this.page) {
-        await this.page.close();
+      if (this.browserInstance) {
+        await playwrightService.closeBrowser(this.browserInstance.identifier);
+        this.browserInstance = null;
         this.page = null;
-      }
-      if (this.context) {
-        await this.context.close();
-        this.context = null;
-      }
-      if (this.browser) {
-        await this.browser.close();
-        this.browser = null;
       }
     } catch (error) {
       logger.warn('Error during browser cleanup:', error.message);
     }
+  }
+
+  serializeCallDescription(callDescObj) {
+    if (typeof callDescObj === 'string') {
+      return callDescObj;
+    }
+    
+    let result = '';
+    if (callDescObj.title) {
+      result += `**${callDescObj.title}**\n\n`;
+    }
+    
+    if (callDescObj.participants && Array.isArray(callDescObj.participants)) {
+      result += '**Participants**:\n';
+      callDescObj.participants.forEach(participant => {
+        result += `• ${participant.name} (${participant.role})`;
+        if (participant.company) {
+          result += ` - ${participant.company}`;
+        }
+        result += '\n';
+      });
+      result += '\n';
+    }
+    
+    if (callDescObj.purpose) {
+      result += `**Purpose**: ${callDescObj.purpose}\n\n`;
+    }
+    
+    if (callDescObj.keyTopics && Array.isArray(callDescObj.keyTopics)) {
+      result += '**Key Topics**:\n';
+      callDescObj.keyTopics.forEach(topic => {
+        result += `• ${topic}\n`;
+      });
+      result += '\n';
+    }
+    
+    if (callDescObj.tone) {
+      result += `**Tone**: ${callDescObj.tone}\n\n`;
+    }
+    
+    return result.trim();
+  }
+
+  serializeSummary(summaryObj) {
+    if (typeof summaryObj === 'string') {
+      return summaryObj;
+    }
+    
+    let result = '**Call Summary**\n\n';
+    
+    if (summaryObj.openingDiscovery) {
+      result += `**Opening & Discovery**\n${summaryObj.openingDiscovery}\n\n`;
+    }
+    
+    if (summaryObj.solutionPresentation) {
+      result += `**Solution Presentation**\n${summaryObj.solutionPresentation}\n\n`;
+    }
+    
+    if (summaryObj.closingNextSteps) {
+      result += `**Closing & Next Steps**\n${summaryObj.closingNextSteps}`;
+    }
+    
+    return result.trim();
   }
 
   /**

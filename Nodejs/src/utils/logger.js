@@ -4,7 +4,8 @@ const config = require('../config/backend-config');
 
 // Create logs directory if it doesn't exist
 const fs = require('fs');
-const logDir = path.dirname(config.logFile);
+const logFile = config.logFile || './logs/app.log';
+const logDir = path.dirname(logFile);
 if (!fs.existsSync(logDir)) {
   fs.mkdirSync(logDir, { recursive: true });
 }
@@ -33,7 +34,7 @@ const logger = winston.createLogger({
     }),
     // Write all logs to file
     new winston.transports.File({
-      filename: config.logFile,
+      filename: logFile,
       maxsize: 5242880, // 5MB
       maxFiles: 5
     }),

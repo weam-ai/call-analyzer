@@ -1,3 +1,6 @@
+// Load environment variables first
+require('dotenv').config();
+
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
@@ -5,9 +8,18 @@ const compression = require('compression');
 const rateLimit = require('express-rate-limit');
 const morgan = require('morgan');
 const path = require('path');
+const mongoose = require('mongoose');
+
+// Clear Mongoose cache to ensure new collection names are used
+if (mongoose.models.Analysis) {
+  delete mongoose.models.Analysis;
+}
+if (mongoose.models.User) {
+  delete mongoose.models.User;
+}
 
 const config = require('./config/backend-config');
-const database = require('./config/database');
+const connectDB = require('./config/database');
 const logger = require('./utils/logger');
 const errorHandler = require('./middleware/errorHandler');
 
@@ -30,67 +42,38 @@ app.use(helmet({
 
 // CORS configuration
 app.use(cors({
-  origin: function (origin, callback) {
-    // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin) return callback(null, true);
-    
-    // Allow localhost on any port
-    if (origin.match(/^https?:\/\/localhost(:\d+)?$/)) {
-      return callback(null, true);
-    }
-    
-    // Allow specific origins
-    const allowedOrigins = [
-      config.corsOrigin,
-      'http://localhost:3000',
-      'http://localhost:3001',
-      'http://localhost:3002',
-      'https://localhost:3000',
-      'https://localhost:3001',
-      'https://localhost:3002'
-    ];
-    
-    if (allowedOrigins.includes(origin)) {
-      return callback(null, true);
-    }
-    
-    // For development, allow all origins
-    if (config.nodeEnv === 'development') {
-      return callback(null, true);
-    }
-    
-    callback(new Error('Not allowed by CORS'));
-  },
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: [
-    'Content-Type', 
-    'Authorization', 
-    'Accept',
-    'Origin',
-    'X-Requested-With',
-    'sec-ch-ua',
-    'sec-ch-ua-mobile',
-    'sec-ch-ua-platform',
-    'User-Agent',
-    'Referer'
-  ],
-  exposedHeaders: ['Content-Length', 'X-Foo', 'X-Bar'],
-  optionsSuccessStatus: 200 // some legacy browsers (IE11, various SmartTVs) choke on 204
+  origin: "*",
+  credentials: true
 }));
 
-// Rate limiting
-const limiter = rateLimit({
-  windowMs: config.rateLimitWindowMs,
-  max: config.rateLimitMaxRequests,
-  message: {
-    success: false,
-    message: 'Too many requests from this IP, please try again later.'
-  },
-  standardHeaders: true,
-  legacyHeaders: false
-});
-app.use('/api/', limiter);
+// Rate limiting (disabled in development for testing)
+if (config.isDevelopment) {
+  // More lenient rate limiting for development
+  const devLimiter = rateLimit({
+    windowMs: 60000, // 1 minute
+    max: 1000, // 1000 requests per minute in development
+    message: {
+      success: false,
+      message: 'Too many requests from this IP, please try again later.'
+    },
+    standardHeaders: true,
+    legacyHeaders: false
+  });
+  app.use('/call-analyzer-api/', devLimiter);
+} else {
+  // Production rate limiting
+  const limiter = rateLimit({
+    windowMs: config.rateLimitWindowMs,
+    max: config.rateLimitMaxRequests,
+    message: {
+      success: false,
+      message: 'Too many requests from this IP, please try again later.'
+    },
+    standardHeaders: true,
+    legacyHeaders: false
+  });
+  app.use('/call-analyzer-api/', limiter);
+}
 
 // Compression middleware
 app.use(compression());
@@ -109,22 +92,71 @@ app.use(morgan('combined', {
 // Request logging
 app.use(logger.requestLogger);
 
-// Health check endpoint
-app.get('/health', (req, res) => {
-  res.json({
+// Call Analyzer API health check endpoint
+app.get('/call-analyzer-api/health', async (req, res) => {
+  const healthCheck = {
     success: true,
-    message: 'Sales Call Analyzer API is running',
+    message: 'Call Analyzer API is running',
     timestamp: new Date().toISOString(),
-    version: '1.0.0'
-  });
+    version: '1.0.0',
+    service: 'call-analyzer-api',
+    status: 'healthy',
+    uptime: process.uptime(),
+    environment: config.environment,
+    services: {
+      database: 'unknown',
+      server: 'ok'
+    },
+    memory: {
+      used: Math.round(process.memoryUsage().heapUsed / 1024 / 1024) + ' MB',
+      total: Math.round(process.memoryUsage().heapTotal / 1024 / 1024) + ' MB'
+    }
+  };
+
+  try {
+    // Check database connection
+    if (mongoose.connection.readyState === 1) {
+      healthCheck.services.database = 'connected';
+    } else if (mongoose.connection.readyState === 2) {
+      healthCheck.services.database = 'connecting';
+    } else {
+      healthCheck.services.database = 'disconnected';
+    }
+
+    // Determine overall status
+    if (healthCheck.services.database !== 'connected') {
+      healthCheck.status = 'degraded';
+      healthCheck.success = false;
+      res.status(503);
+    }
+
+    logger.info('Call Analyzer API health check requested', {
+      status: healthCheck.status,
+      database: healthCheck.services.database
+    });
+
+    res.json(healthCheck);
+
+  } catch (error) {
+    logger.error('Call Analyzer API health check failed:', error);
+    
+    res.status(500).json({
+      success: false,
+      message: 'Call Analyzer API health check failed',
+      timestamp: new Date().toISOString(),
+      service: 'call-analyzer-api',
+      status: 'error',
+      error: error.message
+    });
+  }
 });
 
 // API routes
-app.use('/api/auth', authRoutes);
-app.use('/api/analysis', analysisRoutes);
-app.use('/api/enhanced', enhancedAnalysisRoutes);
-app.use('/api/comprehensive', comprehensiveAnalysisRoutes);
-app.use('/api/audio-analysis', audioAnalysisRoutes);
+app.use('/call-analyzer-api/auth', authRoutes);
+app.use('/call-analyzer-api/analysis', analysisRoutes);
+app.use('/call-analyzer-api/enhanced', enhancedAnalysisRoutes);
+app.use('/call-analyzer-api/comprehensive', comprehensiveAnalysisRoutes);
+app.use('/call-analyzer-api/audio-analysis', audioAnalysisRoutes);
 
 // Serve static files (if needed)
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
@@ -169,13 +201,13 @@ process.on('uncaughtException', (err) => {
 const startServer = async () => {
   try {
     // Connect to database
-    await database.connect();
+    await connectDB();
     
     // Start server
     const server = app.listen(config.port, () => {
       logger.info(`Sales Call Analyzer API server running on port ${config.port}`);
-      logger.info(`Environment: ${config.nodeEnv}`);
-      logger.info(`CORS Origin: ${config.corsOrigin}`);
+      logger.info(`Environment: ${config.environment}`);
+      logger.info(`CORS Origin: ${config.corsOrigin || 'http://localhost:3000'}`);
     });
 
     // Handle server errors

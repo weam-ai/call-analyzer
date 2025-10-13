@@ -22,7 +22,8 @@ import {
   Download
 } from 'lucide-react'
 import { Analysis } from '@/types/analysis'
-import { formatText, toPlainText } from '@/utils/textFormatter'
+import { formatText, toPlainText, getAnalysisTitle } from '@/utils/textFormatter'
+import { apiUrl } from '@/config/frontend-config'
 
 interface AnalysisDashboardProps {
   onAnalysisSelect: (analysis: Analysis) => void
@@ -53,7 +54,7 @@ export function AnalysisDashboard({ onAnalysisSelect, onAnalysisDelete }: Analys
   const fetchAnalyses = async () => {
     try {
       setLoading(true)
-      const response = await fetch('http://localhost:5001/api/comprehensive/')
+      const response = await fetch(`${apiUrl}/comprehensive/`)
       const data = await response.json()
       
       if (data.success) {
@@ -70,20 +71,20 @@ export function AnalysisDashboard({ onAnalysisSelect, onAnalysisDelete }: Analys
 
   const fetchStats = async () => {
     try {
-      const response = await fetch('http://localhost:5001/api/comprehensive/stats/overview')
+      const response = await fetch(`${apiUrl}/comprehensive/stats/overview`)
       const data = await response.json()
       
       if (data.success) {
         setStats(data.data.overview)
       }
     } catch (err) {
-      console.error('Failed to fetch stats:', err)
+      // Error fetching stats - silently handle
     }
   }
 
   const handleDelete = async (analysisId: string) => {
     try {
-      const response = await fetch(`http://localhost:5001/api/comprehensive/${analysisId}`, {
+      const response = await fetch(`${apiUrl}/comprehensive/${analysisId}`, {
         method: 'DELETE'
       })
       
@@ -92,7 +93,7 @@ export function AnalysisDashboard({ onAnalysisSelect, onAnalysisDelete }: Analys
         onAnalysisDelete(analysisId)
       }
     } catch (err) {
-      console.error('Failed to delete analysis:', err)
+      // Error deleting analysis - silently handle
     }
   }
 
@@ -296,7 +297,7 @@ export function AnalysisDashboard({ onAnalysisSelect, onAnalysisDelete }: Analys
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center space-x-2 mb-1">
                             <h3 className="text-sm font-semibold text-gray-900 truncate">
-                              {analysis.input?.fathomUrl || analysis.input?.audioFile?.originalName || 'Analysis'}
+                              {getAnalysisTitle(analysis)}
                             </h3>
                             {analysis.results?.sentiment?.overall && (
                               <span className={`text-sm font-medium ${getSentimentColor(analysis.results.sentiment.overall)}`}>
@@ -346,16 +347,6 @@ export function AnalysisDashboard({ onAnalysisSelect, onAnalysisDelete }: Analys
                       </div>
                     </div>
                     
-                    {analysis.results?.summary && (
-                      <div className="mt-3 p-3 bg-gray-50 rounded-lg">
-                        <div 
-                          className="text-sm text-gray-700 line-clamp-2 prose prose-sm max-w-none"
-                          dangerouslySetInnerHTML={{ 
-                            __html: formatText(analysis.results.summary)
-                          }}
-                        />
-                      </div>
-                    )}
                   </CardContent>
                 </Card>
               ))}

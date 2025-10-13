@@ -1,5 +1,5 @@
 const { GoogleGenerativeAI } = require('@google/generative-ai');
-const playwright = require('playwright');
+const llmService = require('./llmService');
 const multer = require('multer');
 const fs = require('fs').promises;
 const path = require('path');
@@ -76,18 +76,75 @@ Note:- Provide only the evaluation without any additional or miscellaneous infor
 
 **BE CRITICAL AND REALISTIC - Most calls should be 4-6/10, not 7/10.**
 
+**❌ CRITICAL: callDescription and summary MUST BE COMPLETELY DIFFERENT! ❌**
+**⚠️ WARNING: DO NOT use "Detailed Call Analysis" as a header in callDescription!**
+**⚠️ WARNING: DO NOT include "Opening & Discovery", "Solution Presentation", "Closing & Next Steps" sections in callDescription!**
+**⚠️ These sections ONLY belong in summary!**
+
+**callDescription = Executive Summary (like an email preview)**
+**summary = Full Story (like reading the entire transcript with analysis)**
+
 **ENHANCED JSON Response Format Must Include:**
 
-1. **callDescription**: A well-formatted, structured description (150-200 words) that includes:
-   - **Participants**: Who participated in the call (names, roles, companies)
-   - **Purpose**: The primary purpose and context of the call
-   - **Key Topics**: Main discussion points and business challenges addressed
-   - **Tone**: The overall atmosphere and engagement level of the conversation
+1. **callDescription**: A JSON string - EXECUTIVE SUMMARY ONLY (150-200 words)
+   
+   **Format it as a business card/snapshot with NO subsections:**
+   
+   Start with: "## Sales Call Overview" (NOT "Detailed Call Analysis")
+   
+   Then include in PARAGRAPH format (not subsections):
+   - First sentence: State who talked to whom (full names, titles, companies)
+   - Second part: State the single main purpose/goal of the call
+   - Third part: List 3-5 key topics as simple bullet points
+   - Fourth part: One sentence about call atmosphere/tone
+   - Final sentence: What was agreed upon or what happens next
+   
+   **IMPORTANT: This should read like an executive email summary, NOT a detailed analysis!**
+   **Use simple, factual language. No subsections. No detailed explanations.**
 
-2. **summary**: A structured, easy-to-read summary (200-300 words) with clear sections:
-   - **Opening & Discovery**: Key questions asked, pain points uncovered, prospect needs identified
-   - **Solution Presentation**: Product/service presentation, key benefits discussed, value proposition
-   - **Closing & Next Steps**: Call conclusion, follow-up actions, prospect interest level, next meeting scheduled
+2. **summary**: A JSON string - COMPREHENSIVE STORY (400-600 words)
+   
+   **Format with these EXACT markdown headers and detailed narrative:**
+   
+   Start with: "## Detailed Call Analysis" (this header ONLY goes here, NOT in callDescription!)
+   
+   **Then these REQUIRED subsections:**
+   
+   ### Opening & Discovery
+   [Write 2-3 detailed paragraphs telling the story of how the call began]
+   - Include actual quotes or paraphrases from the conversation
+   - Describe the rapport-building process
+   - List every question the sales rep asked
+   - Detail each pain point the prospect mentioned with full context
+   - Include any background info shared (what they've tried before, current situation)
+   - Mention specific numbers, metrics, or KPIs discussed
+   
+   ### Solution Presentation  
+   [Write 2-3 detailed paragraphs about how the solution was presented]
+   - Describe exactly which features were demonstrated
+   - Explain how each feature addresses the prospect's specific pain points
+   - Include pricing information discussed (exact numbers)
+   - Detail any comparisons made to competitors or alternatives
+   - Describe prospect's reactions and questions during demo
+   - Explain how objections were handled with specific examples
+   
+   ### Closing & Next Steps
+   [Write 1-2 detailed paragraphs about call conclusion]
+   - State who committed to what specific actions
+   - Include exact dates/times for follow-ups if mentioned
+   - Detail what materials will be sent and by whom
+   - Assess prospect's genuine interest level based on their words and tone
+   - Provide your analysis of likelihood to close and why
+   
+   ### Overall Assessment
+   [Write 1 paragraph with your professional evaluation]
+   - Was this call successful? Why or why not?
+   - What are the key takeaways for the sales team?
+   - What should happen differently in the next interaction?
+   - What is the realistic next stage in this sales process?
+   
+   **IMPORTANT: This should read like a detailed transcript analysis with rich context and specifics!**
+   **Include actual details from the conversation - names, numbers, features, commitments, dates.**
 
 3. **callRating**: Overall rating (1-10) with detailed justification
 
@@ -133,41 +190,24 @@ Note:- Provide only the evaluation without any additional or miscellaneous infor
 
 **CRITICAL: keyInsights, recommendations, and otherNotableFindings must be arrays of strings, NOT arrays of objects.**
 
-**FORMATTING INSTRUCTIONS:**
-- Use clear headings and subheadings for better organization
-- Include bullet points and numbered lists where appropriate
-- Structure content with clear sections and logical flow
-- Use bold text for emphasis on key points
-- Make content scannable and easy to read
-- Format callDescription and summary with clear structure and organization
+**CRITICAL JSON FORMATTING REQUIREMENTS:**
+- callDescription and summary are JSON strings that should contain markdown formatting
+- Use \\n (escaped newline) for line breaks in JSON strings
+- Use proper JSON string escaping (escape quotes, backslashes, etc.)
+- The JSON must be valid - test it before responding
+- Structure content with markdown headers (##, ###) for better readability
 
-**EXAMPLE FORMAT FOR callDescription:**
-**Sales Call Analysis Overview**
+**NOTICE: The examples below show the SAME call (KubeOps + TechStart) but formatted VERY differently:**
+- **callDescription** = Short factual overview (like LinkedIn post)
+- **summary** = Long detailed story (like reading meeting notes)
 
-**Participants**: [Names, roles, companies]
-**Purpose**: [Primary purpose and context]
-**Key Topics**: [Main discussion points and challenges]
-**Tone**: [Overall atmosphere and engagement level]
+**EXAMPLE callDescription (SHORT EXECUTIVE SUMMARY - 150 words):**
 
-[Brief concluding statement about the analysis value]
+"## Sales Call Overview\\n\\nMaya Chen (Account Executive, KubeOps) conducted a discovery call with Raj Patel (DevOps Lead) and Priya Singh (CTO) from TechStart Inc., a SaaS company experiencing Kubernetes scaling issues. The primary purpose was to understand TechStart's infrastructure challenges and introduce KubeOps' predictive autoscaling solution.\\n\\n**Key Topics:**\\n- Pod failure rates during traffic spikes (15-20% failure rate)\\n- Current manual scaling approach and limitations\\n- KubeOps' ML-based predictive autoscaling features\\n- Pricing comparison with current monitoring tools\\n- Proof of concept proposal\\n\\n**Call Tone:** Highly collaborative and technical, with strong engagement from both the DevOps lead and CTO, indicating serious evaluation intent.\\n\\n**Next Steps:** Raj agreed to a 45-minute technical deep-dive on Friday at 10 AM PST to review a customized proof of concept using TechStart's actual cluster data."
 
-**EXAMPLE FORMAT FOR summary:**
-**Call Summary**
+**EXAMPLE summary (SAME CALL but MUCH MORE DETAILED - 500+ words):**
 
-**Opening & Discovery**
-• [Key questions asked and pain points uncovered]
-• [Prospect needs and requirements identified]
-• [Discovery insights and findings]
-
-**Solution Presentation**
-• [Product/service features and benefits discussed]
-• [Value proposition and competitive advantages]
-• [Technical requirements and implementation details]
-
-**Closing & Next Steps**
-• [Call conclusion and follow-up actions]
-• [Key stakeholders and next meeting details]
-• [Prospect interest level and commitment]
+"## Detailed Call Analysis\\n\\n### Opening & Discovery\\n\\nThe call opened at 2 PM with Maya Chen introducing herself as the Account Executive from KubeOps. She started with rapport-building by asking Raj about his weekend plans, then smoothly transitioned into business by asking, \\\"How has your experience been managing Kubernetes clusters at your current scale?\\\" Raj shared that TechStart runs a SaaS platform with 50,000+ active users and they process approximately 10 million API requests daily. He explained they've been struggling with pod failures, stating, \\\"We're seeing about 15-20% of our pods failing during evening peak hours, which is when our users are most active.\\\"\\n\\nMaya asked follow-up questions: \\\"What's your current autoscaling setup?\\\" Raj explained they use basic Horizontal Pod Autoscaler (HPA) with CPU threshold of 70%, but admitted it's purely reactive. \\\"By the time HPA kicks in, we're already experiencing degraded performance,\\\" he said. Maya then asked about business impact, and Raj revealed each minute of downtime costs approximately $2,000 in lost transactions. He mentioned three major incidents in Q2 that resulted in customer escalations and two enterprise clients threatening to churn. When asked about their DevOps team capacity, Raj shared they have 5 engineers who spend roughly 40% of their time just monitoring and manually scaling infrastructure instead of working on product features.\\n\\nCrucially, when Maya asked about budget, Raj indicated they have $50,000 allocated for infrastructure tooling this quarter. He also mentioned they're currently paying $3,200/month for Datadog monitoring but still need manual intervention for scaling decisions.\\n\\n### Solution Presentation\\n\\nMaya presented KubeOps' predictive autoscaling platform, starting with the core value proposition: \\\"We use machine learning to predict traffic spikes 5-15 minutes before they happen, so your clusters scale proactively instead of reactively.\\\" She shared a specific example of how a similar SaaS company reduced their pod failure rate from 18% to under 2% within 30 days of implementation.\\n\\nRaj immediately asked technical questions: \\\"Does this work with our existing Prometheus and Grafana setup?\\\" Maya confirmed native integration and showed screenshots of the dashboard. \\\"Can we customize the ML models for our specific traffic patterns?\\\" Maya explained the system starts with baseline models but learns and adapts to each customer's unique patterns after 30 days of data collection. She was transparent, noting, \\\"The first month you'll see good results, but months 2-3 are when the predictions become really accurate as the model learns your specific patterns.\\\"\\n\\nRegarding pricing, Maya positioned it at $1,800/month for TechStart's scale (up to 100K users), emphasizing this is 44% less than their current Datadog cost while providing both monitoring AND automated scaling. When Raj asked about ROI, Maya calculated: \\\"If we prevent just two of those $2,000/minute incidents per month, you've already covered the cost. Based on your three incidents last quarter, we'd expect to save you $15,000-$20,000 monthly.\\\"\\n\\nRaj raised a concern: \\\"We can't afford to add another tool that doesn't work.\\\" Maya responded by offering a proof of concept using TechStart's actual anonymized cluster data to demonstrate prediction accuracy before any commitment.\\n\\n### Closing & Next Steps\\n\\nRaj's response to the POC offer was enthusiastic: \\\"That would be incredibly helpful - I need real data to present to our CTO for approval.\\\" Maya proposed a 45-minute technical session for later that week to present the POC results and dive deeper into architecture and security. Raj checked his calendar and confirmed Friday at 10 AM PST worked. Maya offered to include their Senior Solutions Architect in the Friday call if Raj wanted to bring technical team members. Raj appreciated this and said he'd likely invite their Lead Platform Engineer.\\n\\nSpecific commitments established:\\n- Maya will: (1) Prepare POC analysis using TechStart's cluster data by Thursday EOD, (2) Send technical integration documentation for Prometheus/Grafana, (3) Include case study from similar-sized SaaS company, (4) Send calendar invite for Friday 10 AM with Zoom link, (5) CC their Solutions Architect on the invite\\n- Raj will: (1) Review all materials before Friday, (2) Prepare list of technical questions, (3) Bring their Platform Engineer if POC results look promising, (4) Have preliminary budget discussion with CTO before Friday call\\n\\nRaj's final comment was telling: \\\"This is exactly the kind of proactive approach we need. Looking forward to Friday.\\\" His tone shifted from cautious to genuinely interested after the POC offer.\\n\\n### Overall Assessment\\n\\nThis was an expertly executed discovery call scoring 8.5/10. Maya demonstrated exceptional qualification skills by quantifying the business impact ($2K/minute downtime, three incidents, churn risk) before presenting pricing. The POC strategy was brilliant - it addresses Raj's risk concerns while demonstrating product confidence. The prospect is highly qualified: clear budget authority (CTO involved), urgent pain point (costing them real money), defined evaluation process, and senior decision-makers engaged. The likelihood of conversion is 75-80% if the POC demonstrates solid prediction accuracy. Expected timeline: POC review Friday, technical validation week 2, pricing negotiation week 3, contract by end of month. The consultative approach and technical credibility established strong foundation for closing this deal."
 
 ---
 ### **Primary Objectives**
@@ -304,9 +344,22 @@ By adhering to these guidelines, provide sales teams with actionable insights an
     try {
       await this.initialize();
 
-      // Create analysis record
+      // Create user object from session data
+      let userObject = null;
+      if (analysisData.userData && (analysisData.userData.userId || analysisData.userData.email)) {
+        // Use session user data if available
+        userObject = {
+          email: analysisData.userData.email || null,
+          userId: analysisData.userData.userId || null,
+          companyId: analysisData.userData.companyId || null
+        };
+      } else {
+        logger.warn('No user data provided in session, continuing without user context');
+      }
+
+      // Create analysis record using user object
       const analysis = new Analysis({
-        userId: analysisData.userId,
+        user: userObject,
         serviceType: analysisData.serviceType,
         status: 'processing',
         input: {
@@ -389,12 +442,18 @@ By adhering to these guidelines, provide sales teams with actionable insights an
       const audioAnalysisService = require('./audioAnalysisService');
       const result = await audioAnalysisService.processAudioAnalysis(
         audioFile, 
-        analysis.userId,
+        analysis.user.userId,
         {
           additionalContent: '',
           analysisType: 'comprehensive'
-        }
+        },
+        analysis // Pass existing analysis record to avoid duplicates
       );
+      
+      // Update the existing analysis with the audio processing results
+      analysis.processing.transcript = result.processing.transcript;
+      analysis.processing.llmAnalysis = result.processing.llmAnalysis;
+      await analysis.save();
       
       return {
         transcript: result.processing.transcript.text,
@@ -478,57 +537,42 @@ By adhering to these guidelines, provide sales teams with actionable insights an
 
   async scrapeWebsiteContent(url, analysis) {
     try {
-      let browser = null;
+      logger.info('COMPREHENSIVE SERVICE: Extracting product/service info from URL using LLM', { url });
+      const startTime = Date.now();
       
-      browser = await playwright.chromium.launch({
-        headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox']
+      // Use LLM service to extract content from URL
+      const result = await llmService.extractTranscriptFromUrl(url);
+      
+      const processingTime = Date.now() - startTime;
+      logger.info('COMPREHENSIVE SERVICE: URL content extraction successful', {
+        url,
+        contentLength: result.text?.length,
+        wordCount: result.wordCount,
+        processingTime: `${processingTime}ms`
       });
-
-      const context = await browser.newContext({
-        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-      });
-
-      const page = await context.newPage();
-      await page.goto(url, { waitUntil: 'networkidle' });
-      await page.waitForTimeout(2000);
-
-      const content = await page.evaluate(() => {
-        // Remove script and style elements
-        const scripts = document.querySelectorAll('script, style, nav, header, footer, aside');
-        scripts.forEach(el => el.remove());
-
-        // Get main content
-        const mainContent = document.querySelector('main, article, .content, #content') || document.body;
-        return {
-          text: mainContent.textContent?.trim() || '',
-          title: document.title,
-          url: window.location.href
-        };
-      });
-
-      await browser.close();
-
-      const wordCount = content.text.split(/\s+/).length;
 
       // Update analysis with scraped content
       analysis.processing.scrapedContent = {
-        text: content.text,
-        url: content.url,
-        title: content.title,
-        wordCount: wordCount
+        text: result.text,
+        url: result.url,
+        title: result.title || 'Product/Service Information',
+        wordCount: result.wordCount
       };
       await analysis.save();
 
       return {
-        content: content.text,
-        title: content.title,
-        url: content.url,
-        wordCount: wordCount
+        content: result.text,
+        title: result.title || 'Product/Service Information',
+        url: result.url,
+        wordCount: result.wordCount
       };
 
     } catch (error) {
-      logger.error('Website scraping failed:', error);
+      logger.error('COMPREHENSIVE SERVICE: Website content extraction failed', {
+        url,
+        error: error.message,
+        stack: error.stack
+      });
       throw error;
     }
   }
@@ -577,11 +621,23 @@ ${callData.transcript}
 PRODUCT/SERVICE INFORMATION:
 ${productServiceData.content || 'No product/service information provided'}
 
+**CRITICAL: You MUST respond with ONLY valid JSON format. Do not include any explanatory text, markdown formatting, or code blocks. Return ONLY the JSON object.**
+
 Please provide a comprehensive analysis in the following JSON format:
 {
   "callDescription": "Brief description of the call between both parties",
   "summary": "High-level overview of the call outcome",
   "callRating": 8,
+  "callRatingBreakdown": {
+    "engagementQuality": 8,
+    "responsiveness": 7,
+    "discoverySkills": 6,
+    "valueProposition": 8,
+    "objectionHandling": 0,
+    "closingAttempts": 9,
+    "followUpPlanning": 8,
+    "overallCallFlow": 7
+  },
   "prospectDemographics": {
     "teamSize": "Small team (5-10 people)",
     "workVolume": "Medium volume",
@@ -632,7 +688,9 @@ Please provide a comprehensive analysis in the following JSON format:
       }
     ]
   }
-}`;
+}
+
+**IMPORTANT: Return ONLY the JSON object above, with no additional text, explanations, or formatting.**`;
 
       const result = await this.model.generateContent(fullPrompt);
       const response = await result.response;
@@ -640,18 +698,128 @@ Please provide a comprehensive analysis in the following JSON format:
 
       const processingTime = Date.now() - startTime;
 
-      // Parse the JSON response
+      // Parse the JSON response with improved error handling
       let parsedResults;
+      let jsonText = analysisText.trim();
+      
       try {
-        const jsonMatch = analysisText.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          parsedResults = JSON.parse(jsonMatch[0]);
-        } else {
-          throw new Error('No JSON found in response');
+        // Try multiple strategies to extract and parse JSON
+        const strategies = [
+          // Strategy 1: Look for JSON in markdown code blocks with proper brace matching
+          () => {
+            // Find ```json start marker
+            const jsonStartMatch = analysisText.match(/```json\s*/);
+            if (jsonStartMatch) {
+              const jsonStart = jsonStartMatch.index + jsonStartMatch[0].length;
+              const afterJsonStart = analysisText.substring(jsonStart);
+              
+              // Find the first opening brace
+              const braceStart = afterJsonStart.indexOf('{');
+              if (braceStart !== -1) {
+                // Count braces to find matching closing brace
+                let braceCount = 0;
+                let endIndex = braceStart;
+                for (let i = braceStart; i < afterJsonStart.length; i++) {
+                  if (afterJsonStart[i] === '{') braceCount++;
+                  if (afterJsonStart[i] === '}') {
+                    braceCount--;
+                    if (braceCount === 0) {
+                      endIndex = i;
+                      break;
+                    }
+                  }
+                }
+                if (endIndex > braceStart && braceCount === 0) {
+                  return this.cleanJsonString(afterJsonStart.substring(braceStart, endIndex + 1));
+                }
+              }
+            }
+            return null;
+          },
+          // Strategy 2: Smart brace counting to find proper JSON boundaries (without code blocks)
+          () => {
+            const startIndex = analysisText.indexOf('{');
+            if (startIndex !== -1) {
+              let braceCount = 0;
+              let endIndex = startIndex;
+              for (let i = startIndex; i < analysisText.length; i++) {
+                if (analysisText[i] === '{') braceCount++;
+                if (analysisText[i] === '}') braceCount--;
+                if (braceCount === 0) {
+                  endIndex = i;
+                  break;
+                }
+              }
+              if (endIndex > startIndex) {
+                return this.cleanJsonString(analysisText.substring(startIndex, endIndex + 1));
+              }
+            }
+            return null;
+          },
+          // Strategy 3: Direct JSON extraction (fallback)
+          () => {
+            const jsonMatch = analysisText.match(/\{[\s\S]*\}/);
+            if (jsonMatch) {
+              return this.cleanJsonString(jsonMatch[0]);
+            }
+            return null;
+          }
+        ];
+
+        // Try each strategy
+        let jsonText = null;
+        for (const strategy of strategies) {
+          try {
+            jsonText = strategy();
+            if (jsonText) {
+              logger.info('Attempting to parse JSON:', { 
+                jsonLength: jsonText.length, 
+                preview: jsonText.substring(0, 200),
+                hasJsonStructure: jsonText.includes('{') && jsonText.includes('}'),
+                strategy: strategies.indexOf(strategy) + 1
+              });
+              
+              parsedResults = JSON.parse(jsonText);
+              
+              // Validate and fix the parsed results
+              parsedResults = this.validateAndFixJson(parsedResults);
+              
+              logger.info('Successfully parsed and validated JSON response');
+              break;
+            }
+          } catch (strategyError) {
+            // Continue to next strategy
+            continue;
+          }
         }
+
+        if (!parsedResults) {
+          throw new Error('All JSON parsing strategies failed');
+        }
+        
       } catch (parseError) {
-        logger.warn('Failed to parse JSON response, using fallback');
-        parsedResults = this.createFallbackResults(analysisText);
+        logger.warn('Failed to parse JSON response, using fallback', { 
+          error: parseError.message,
+          responsePreview: analysisText.substring(0, 500),
+          jsonAttempt: jsonText ? jsonText.substring(0, 200) : 'No JSON extracted'
+        });
+        
+        // Try to extract some information from the raw response
+        const extractedData = this.extractDataFromText(analysisText);
+        if (extractedData && Object.keys(extractedData).length > 0) {
+          parsedResults = this.validateAndFixJson(extractedData);
+          logger.info('Successfully extracted data from text response');
+        } else {
+          parsedResults = this.createFallbackResults(analysisText);
+        }
+      }
+
+      // Ensure callDescription and summary are strings, not objects
+      if (parsedResults.callDescription && typeof parsedResults.callDescription === 'object') {
+        parsedResults.callDescription = this.serializeCallDescription(parsedResults.callDescription);
+      }
+      if (parsedResults.summary && typeof parsedResults.summary === 'object') {
+        parsedResults.summary = this.serializeSummary(parsedResults.summary);
       }
 
       // Update analysis with processing details
@@ -675,6 +843,177 @@ Please provide a comprehensive analysis in the following JSON format:
       logger.error('Comprehensive analysis generation failed:', error);
       throw error;
     }
+  }
+
+  serializeCallDescription(callDescObj) {
+    if (typeof callDescObj === 'string') {
+      return callDescObj;
+    }
+    
+    let result = '';
+    if (callDescObj.title) {
+      result += `**${callDescObj.title}**\n\n`;
+    }
+    
+    if (callDescObj.participants && Array.isArray(callDescObj.participants)) {
+      result += '**Participants**:\n';
+      callDescObj.participants.forEach(participant => {
+        result += `• ${participant.name} (${participant.role})`;
+        if (participant.company) {
+          result += ` - ${participant.company}`;
+        }
+        result += '\n';
+      });
+      result += '\n';
+    }
+    
+    if (callDescObj.purpose) {
+      result += `**Purpose**: ${callDescObj.purpose}\n\n`;
+    }
+    
+    if (callDescObj.keyTopics && Array.isArray(callDescObj.keyTopics)) {
+      result += '**Key Topics**:\n';
+      callDescObj.keyTopics.forEach(topic => {
+        result += `• ${topic}\n`;
+      });
+      result += '\n';
+    }
+    
+    if (callDescObj.tone) {
+      result += `**Tone**: ${callDescObj.tone}\n\n`;
+    }
+    
+    return result.trim();
+  }
+
+  serializeSummary(summaryObj) {
+    if (typeof summaryObj === 'string') {
+      return summaryObj;
+    }
+    
+    let result = '**Call Summary**\n\n';
+    
+    if (summaryObj.openingDiscovery) {
+      result += `**Opening & Discovery**\n${summaryObj.openingDiscovery}\n\n`;
+    }
+    
+    if (summaryObj.solutionPresentation) {
+      result += `**Solution Presentation**\n${summaryObj.solutionPresentation}\n\n`;
+    }
+    
+    if (summaryObj.closingNextSteps) {
+      result += `**Closing & Next Steps**\n${summaryObj.closingNextSteps}`;
+    }
+    
+    return result.trim();
+  }
+
+  /**
+   * Extract structured data from text response when JSON parsing fails
+   */
+  extractDataFromText(text) {
+    try {
+      const result = {};
+      
+      // Try to extract call rating
+      const ratingMatch = text.match(/callRating[:\s]*(\d+)/i);
+      if (ratingMatch) {
+        result.callRating = parseInt(ratingMatch[1]);
+      }
+      
+      // Try to extract call description
+      const descMatch = text.match(/callDescription[:\s]*["']?([^"'\n]+)["']?/i);
+      if (descMatch) {
+        result.callDescription = descMatch[1].trim();
+      }
+      
+      // Try to extract summary
+      const summaryMatch = text.match(/summary[:\s]*["']?([^"'\n]+)["']?/i);
+      if (summaryMatch) {
+        result.summary = summaryMatch[1].trim();
+      }
+      
+      // Try to extract insights
+      const insightsMatch = text.match(/keyInsights[:\s]*\[([^\]]+)\]/i);
+      if (insightsMatch) {
+        result.keyInsights = insightsMatch[1].split(',').map(item => item.trim().replace(/["']/g, ''));
+      }
+      
+      // Try to extract recommendations
+      const recMatch = text.match(/recommendations[:\s]*\[([^\]]+)\]/i);
+      if (recMatch) {
+        result.recommendations = recMatch[1].split(',').map(item => item.trim().replace(/["']/g, ''));
+      }
+      
+      // Return result if we extracted at least some data
+      return Object.keys(result).length > 0 ? result : null;
+    } catch (error) {
+      logger.warn('Failed to extract data from text:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Validate and fix JSON structure
+   */
+  validateAndFixJson(parsedResults) {
+    const requiredFields = [
+      'callDescription', 'summary', 'callRating', 'prospectDemographics', 
+      'salesPerformance', 'keyInsights', 'recommendations', 'otherNotableFindings', 
+      'salesOpportunities'
+    ];
+
+    // Ensure all required fields exist
+    for (const field of requiredFields) {
+      if (!parsedResults[field]) {
+        if (field === 'keyInsights' || field === 'recommendations' || field === 'otherNotableFindings') {
+          parsedResults[field] = [];
+        } else if (field === 'prospectDemographics' || field === 'salesPerformance' || field === 'salesOpportunities') {
+          parsedResults[field] = {};
+        } else {
+          parsedResults[field] = 'Not specified';
+        }
+      }
+    }
+
+    // Ensure arrays are actually arrays
+    ['keyInsights', 'recommendations', 'otherNotableFindings'].forEach(field => {
+      if (!Array.isArray(parsedResults[field])) {
+        parsedResults[field] = [];
+      }
+    });
+
+    // Ensure callRating is a number
+    if (typeof parsedResults.callRating !== 'number') {
+      parsedResults.callRating = 6;
+    }
+
+    // Add callRatingBreakdown if missing
+    if (!parsedResults.callRatingBreakdown) {
+      parsedResults.callRatingBreakdown = {
+        engagementQuality: parsedResults.callRating,
+        responsiveness: parsedResults.callRating,
+        discoverySkills: parsedResults.callRating,
+        valueProposition: parsedResults.callRating,
+        objectionHandling: 0,
+        closingAttempts: parsedResults.callRating,
+        followUpPlanning: parsedResults.callRating,
+        overallCallFlow: parsedResults.callRating
+      };
+    }
+
+    // Ensure salesOpportunities has the required structure
+    if (!parsedResults.salesOpportunities.productServiceGap) {
+      parsedResults.salesOpportunities.productServiceGap = [];
+    }
+    if (!parsedResults.salesOpportunities.upsellingOpportunities) {
+      parsedResults.salesOpportunities.upsellingOpportunities = [];
+    }
+    if (!parsedResults.salesOpportunities.crossSellingOpportunities) {
+      parsedResults.salesOpportunities.crossSellingOpportunities = [];
+    }
+
+    return parsedResults;
   }
 
   createFallbackResults(analysisText) {
@@ -759,6 +1098,57 @@ Please provide a comprehensive analysis in the following JSON format:
     const inputCostPer1K = 0.00125;
     const outputCostPer1K = 0.005;
     return (tokens / 1000) * (inputCostPer1K + outputCostPer1K) / 2;
+  }
+
+  /**
+   * Clean JSON string to handle common parsing issues
+   */
+  cleanJsonString(jsonText) {
+    try {
+      // Remove code block markers
+      let cleaned = jsonText
+        .replace(/```json\s*/g, '')
+        .replace(/```\s*/g, '')
+        .trim();
+
+      // Try to find the JSON object boundaries more precisely
+      const startIndex = cleaned.indexOf('{');
+      const lastIndex = cleaned.lastIndexOf('}');
+      
+      if (startIndex !== -1 && lastIndex !== -1 && lastIndex > startIndex) {
+        cleaned = cleaned.substring(startIndex, lastIndex + 1);
+      }
+
+      // More aggressive cleaning for common issues
+      cleaned = cleaned
+        // Fix unescaped quotes in string values - more comprehensive
+        .replace(/"([^"]*)"([^"]*)"([^"]*)":/g, '"$1\\"$2\\"$3":')
+        .replace(/: "([^"]*)"([^"]*)"([^"]*)"/g, ': "$1\\"$2\\"$3"')
+        // Fix single quotes that should be escaped
+        .replace(/'/g, "\\'")
+        // Remove trailing commas
+        .replace(/,(\s*[}\]])/g, '$1')
+        // Fix newlines and carriage returns in string values
+        .replace(/"([^"]*)[\r\n]+([^"]*)"/g, '"$1\\n$2"')
+        // Fix other special characters that break JSON
+        .replace(/[\r\n\t]/g, ' ')
+        // Normalize whitespace
+        .replace(/\s+/g, ' ')
+        .trim();
+
+      // Try to validate the JSON structure
+      const testParse = JSON.parse(cleaned);
+      return cleaned;
+      
+    } catch (error) {
+      // If cleaning fails, return a more basic cleanup
+      return jsonText
+        .replace(/```json\s*/g, '')
+        .replace(/```\s*/g, '')
+        .replace(/,(\s*[}\]])/g, '$1')
+        .replace(/\s+/g, ' ')
+        .trim();
+    }
   }
 }
 
