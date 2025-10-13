@@ -3,6 +3,8 @@ services:
     build: 
       context: ./Nodejs
       dockerfile: Dockerfile
+    image: call-analyzer-backend-img
+    container_name: call-analyzer-backend-container
     ports:
       - "5002:5000"
     env_file:
@@ -20,6 +22,8 @@ services:
     build:
       context: ./Nextjs
       dockerfile: Dockerfile
+    image: call-analyzer-frontend-img
+    container_name: call-analyzer-frontend-container
     ports:
       - "5003:3000"
     env_file:
